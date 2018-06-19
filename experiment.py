@@ -77,7 +77,7 @@ class Experiment:
         :param client: A connection to the SLURM server.
         :return: The all jobs associated with this experiment, or None if none exists.
         """
-        jobs = client.all_jobs(job_name=(self.basename.lower() + '_' + self.id))
+        jobs = client.all_jobs()
         return list(filter(lambda j: j.name == self.basename.lower() + '_' + self.id, jobs))
 
     def local_project_path(self, filename=''):
@@ -154,7 +154,7 @@ class Experiment:
 
     def complete(self, client):
         """
-        Download the results of this experiment back to the local machine. This can only run sucessfully when all
+        Download the results of this experiment back to the local machine. This can only run successfully when all
         SLURM jobs started by the experiment have completed.
 
         :param client: A connection to the SLURM server.
@@ -163,6 +163,20 @@ class Experiment:
         self._gather(client)
         self._cleanup(client)
         self._postprocess()
+
+    def finished(self, verbose=False):
+        """
+        Check if the experiment is complete by checking for the existence of output files.
+
+        :param verbose: If true, print a message when not all output files were generated.
+        :return: True if the experiment is complete, false otherwise.
+        """
+        output_files = self.output_filenames()
+        if len(output_files) > 0:
+            if len(output_files) < len(self.changing_args) and verbose:
+                print('Finished. Only %d/%d output files.' % (len(output_files), len(self.changing_args)))
+            return True
+        return False
 
     def ipython_gui(self, client, num_workers, **kwargs):
         """
@@ -335,6 +349,7 @@ class Experiment:
 
         script_builder.set("ARGS", '"' + json.dumps(self.args).replace('"', '\\"') + '"')
         script_builder.set("SCRIPT", self.remote_project_path(self.script))
+        script_builder.set("PROJECT", self.remote_project_path(""))
         script_builder.set("FULL_NAME", self.basename.lower() + '_' + self.id)
         script_builder.set("ID", str(self.id))
         script_builder.set("IN", '"' + self.remote_experiment_path('$SLURM_ARRAY_TASK_ID.in') + '"')

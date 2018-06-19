@@ -45,7 +45,7 @@ class SLURMServer(SSHServer):
 
         return BatchJob.collect(self, res)
 
-    def all_jobs(self, job_id=None, other_username=None, job_name=None):
+    def all_jobs(self, job_id=None, other_username=None):
         """
         Load information on all jobs using sacct. Batch jobs of the same batch are grouped together.
 
@@ -65,8 +65,6 @@ class SLURMServer(SSHServer):
         else:
             command += ' -u ' + self.username
 
-        if job_name:
-            command += " | grep -E '.*%s.*'" % job_name
         raw_jobs = self.execute(command).split('\n')
         raw_jobs = list(filter(lambda j: j != '', raw_jobs))
 

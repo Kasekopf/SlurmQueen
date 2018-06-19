@@ -50,6 +50,7 @@ echo Total Workers: $1
 echo Base Arguments: [$$ARGS]
 
 [$$MODULES]
+cd [$$PROJECT]
 python [$$SCRIPT] [$$ARGS] [$$IN]
 """)
 
