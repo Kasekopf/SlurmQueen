@@ -10,6 +10,18 @@ class SQLCachedExperiment(Experiment):
     A type of Experiment that can process all results into an SQL database for easy access.
     """
 
+    def query(self, config, query):
+        """
+        Query the database of results.
+
+        :param config: The runtime server configuration.
+        :param query: An SQL query to run
+        :return: A pandas dataframe with the results of the query
+        """
+        with self.results_db(config) as db:
+            data = pd.read_sql_query(query, db)
+            return data
+
     def results_db(self, config):
         """
         Open a connection to the database used to cache results.
@@ -17,6 +29,7 @@ class SQLCachedExperiment(Experiment):
         The "headers" database will contain the parameters used for each task.
         The "data" database will contain the data generated as a result of each task.
 
+        :param config: The runtime server configuration.
         :return: A connection to the database used to cache results.
         """
         return SQLiteConnection(self.local_experiment_path(config, "_results.db"))
@@ -59,7 +72,7 @@ class SQLCachedExperiment(Experiment):
 
                     data.extend(
                         [{col[0]: val for col, val in chain(zip(data_columns, tup), [(("file", ""), file_id)])}
-                         for tup in map(literal_eval, lines[1:])])
+                         for tup in map(literal_eval, [l.replace("inf", "-1").replace("nan", "-1") for l in lines[1:]])])
                 except SyntaxError:
                     raise SyntaxError('EOL while scanning ' + filename)
                 except ValueError:
