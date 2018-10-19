@@ -189,6 +189,12 @@ class Experiment:
             return True
         return False
 
+    def analyze_or_gui(self, config, num_workers, **kwargs):
+        if self.finished(config):
+            return self.analyze()
+        else:
+            return self.ipython_gui(config, num_workers, **kwargs)
+
     def ipython_gui(self, config, num_workers, **kwargs):
         """
         Build a iPython GUI for running and completing this experiment. All arguments are passed unchanged to "run".
@@ -292,7 +298,7 @@ class Experiment:
         print('Experiment complete. Compressing results.')
         output = '_outputs.zip'
         config.server.execute('zip -j ' + self.remote_experiment_path(config, output)
-                              + ' ' + self.remote_experiment_path(config, '*.out'))
+                              + ' ' + self.remote_experiment_path(config, '*.out'), timeout=1000)
 
         # Copy the output zip file locally
         print('Copying results to local directory')
@@ -318,7 +324,7 @@ class Experiment:
 
         # Delete all files from experiment server
         print('Deleting files from remote server:', self.remote_experiment_path(config))
-        res = config.server.execute('rm -r ' + self.remote_experiment_path(config))
+        res = config.server.execute('rm -r ' + self.remote_experiment_path(config), timeout=1000)
         if res != '':
             print(res)
 
