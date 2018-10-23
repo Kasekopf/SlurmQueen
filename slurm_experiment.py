@@ -4,7 +4,7 @@ import zipfile
 import re
 from slurm_script import base_script, continuation_script
 from ipywidgets import widgets
-from experiment import Experiment
+from experiment import Experiment, ExperimentInstance
 
 
 class ExperimentConfig:
@@ -63,59 +63,8 @@ class SlurmExperiment(Experiment):
         self.dependencies = dependencies
         self.setup_commands = setup_commands
 
-    def job(self, config):
-        """
-        Get the most recent job associated with this experiment.
-
-        :param config: The runtime server configuration.
-        :return: The most recent job associated with this experiment, or None if none exists.
-        """
-        jobs = self.jobs(config)
-        if len(jobs) == 0:
-            return None
-
-        jobs.sort(key=lambda j: int(j.jobid))
-        return jobs[-1]
-
-    def jobs(self, config):
-        """
-        Get all jobs associated with this experiment.
-
-        :param config: The runtime server configuration.
-        :return: The all jobs associated with this experiment, or None if none exists.
-        """
-        jobs = config.server.all_jobs()
-        return list(filter(lambda j: j.name == self.basename.lower() + '_' + self.id, jobs))
-
-    def local_project_path(self, config, filename=''):
-        """
-        Get the full name for a file contained in the project directory on the local machine.
-
-        :param config: The runtime server configuration.
-        :param filename: The name of the file relative to the project directory.
-        :return: The full local name of the provided file.
-        """
-        return config.local_directory + '/' + self.basename + '/' + filename
-
-    def local_experiment_path(self, config, filename=''):
-        """
-        Get the full name for a file contained in the experiment directory on the local machine.
-
-        :param config: The runtime server configuration.
-        :param filename: The name of the file relative to the experiment directory.
-        :return: The full local name of the provided file.
-        """
-        return self.local_project_path(config, 'experiments/' + self.id + '/' + filename)
-
-    def remote_experiment_path(self, config, filename=''):
-        """
-        Get the full name for a file contained in the experiment directory on the remote machine.
-
-        :param config: The runtime server configuration.
-        :param filename: The name of the file relative to the experiment directory.
-        :return: The full remote name of the provided file.
-        """
-        return config.remote_directory + '/' + self.basename.lower() + '/' + self.id + '/' + filename
+    def slurm_instance(self, config):
+        return SlurmInstance(self, config)
 
     def partition(self, max_size=498):
         """
@@ -131,67 +80,125 @@ class SlurmExperiment(Experiment):
         res = []
         for i in range(num_partitions):
             args_subset = self.changing_args[(i*size):(i*size+size)]
-            res.append(Experiment(self.basename, self.id + '/' + str(i), self.command, args_subset))
+            res.append(SlurmExperiment(self.basename, self.id + '/' + str(i), self.command, self.dependencies,
+                                       args_subset, setup_commands=self.setup_commands))
         return res
 
-    def run(self, config, num_workers, time, **kwargs):
+    def __str__(self):
+        return self.basename.lower() + '_' + self.id
+
+
+class SlurmInstance(ExperimentInstance):
+    def __init__(self, experiment_base, config):
+        self._exp = experiment_base
+        self._config = config
+        ExperimentInstance.__init__(self, experiment_base, self.local_experiment_path())
+
+    def job(self):
+        """
+        Get the most recent job associated with this experiment.
+
+        :return: The most recent job associated with this experiment, or None if none exists.
+        """
+        jobs = self.jobs()
+        if len(jobs) == 0:
+            return None
+
+        jobs.sort(key=lambda j: int(j.jobid))
+        return jobs[-1]
+
+    def jobs(self):
+        """
+        Get all jobs associated with this experiment.
+
+        :return: The all jobs associated with this experiment, or None if none exists.
+        """
+        jobs = self._config.server.all_jobs()
+        return list(filter(lambda j: j.name == str(self), jobs))
+
+    def local_project_path(self, filename=''):
+        """
+        Get the full name for a file contained in the project directory on the local machine.
+
+        :param filename: The name of the file relative to the project directory.
+        :return: The full local name of the provided file.
+        """
+        return self._config.local_directory + '/' + self._exp.basename + '/' + filename
+
+    def local_experiment_path(self, filename=''):
+        """
+        Get the full name for a file contained in the experiment directory on the local machine.
+
+        :param filename: The name of the file relative to the experiment directory.
+        :return: The full local name of the provided file.
+        """
+        return self.local_project_path('experiments/' + self._exp.id + '/' + filename)
+
+    def remote_experiment_path(self, filename=''):
+        """
+        Get the full name for a file contained in the experiment directory on the remote machine.
+
+        :param filename: The name of the file relative to the experiment directory.
+        :return: The full remote name of the provided file.
+        """
+        return self._config.remote_directory + '/' + self._exp.basename.lower() + '/' + self._exp.id + '/' + filename
+
+    def run(self, num_workers, time, **kwargs):
         """
         Run this experiment on the provided SLURM server. If successful, print the job id used.
 
-        :param config: The runtime server configuration.
         :param num_workers: The number of workers to use for this experiment.
-        :param kwargs: Passed to the _setup_all function.
+        :param time: The timeout to use for this experiment.
+        :param kwargs: Passed to the_setup_all function.
         :return: None
         """
         if num_workers < 0:
             num_workers = len(self)
             print('Running across ' + str(num_workers) + ' nodes')
 
-        command = self._setup_all(config, num_workers, time, **kwargs)
+        command = self._setup_all(num_workers, time, **kwargs)
         print('Attempting to submit job')
-        print(config.server.execute(command))
+        print(self._config.server.execute(command))
 
-    def complete(self, config):
+    def complete(self):
         """
         Download the results of this experiment back to the local machine. This can only run successfully when all
         SLURM jobs started by the experiment have completed.
 
-        :param config: The runtime server configuration.
         :return: None
         """
-        self._gather(config)
-        self._cleanup(config)
-        self._postprocess(config)
+        self._gather()
+        self._cleanup()
+        self._postprocess()
 
-    def finished(self, config, verbose=False):
+    def finished(self, verbose=False):
         """
         Check if the experiment is complete by checking for the existence of output files.
 
-        :param config: The runtime server configuration.
         :param verbose: If true, print a message when not all output files were generated.
         :return: True if the experiment is complete, false otherwise.
         """
-        if not os.path.exists(self.local_experiment_path(config)):
+        if not os.path.exists(self.local_experiment_path()):
             return False
-        output_files = self.output_filenames(self.local_experiment_path(config))
+        output_files = self.output_filenames()
         if len(output_files) > 0:
-            if len(output_files) < len(self.changing_args) and verbose:
-                print('Finished. Only %d/%d output files.' % (len(output_files), len(self.changing_args)))
+            if len(output_files) < len(self._exp.changing_args) and verbose:
+                print('Finished. Only %d/%d output files.' % (len(output_files), len(self._exp.changing_args)))
             return True
         return False
 
-    def analyze_or_gui(self, config, num_workers, **kwargs):
-        if self.finished(config):
+    def analyze_or_gui(self, num_workers, **kwargs):
+        if self.finished():
             return self.analyze()
         else:
-            return self.ipython_gui(config, num_workers, **kwargs)
+            return self.ipython_gui(num_workers, **kwargs)
 
-    def ipython_gui(self, config, num_workers, time, **kwargs):
+    def ipython_gui(self, num_workers, time, **kwargs):
         """
         Build a iPython GUI for running and completing this experiment. All arguments are passed unchanged to "run".
 
-        :param config: The runtime server configuration.
         :param num_workers: The number of workers to use for this experiment.
+        :param time: The timeout to use for this experiment.
         :param kwargs: Passed to the _setup function.
         :return: A GUI to manipulate this job.
         """
@@ -201,20 +208,21 @@ class SlurmExperiment(Experiment):
         status_label = widgets.Label()
 
         def update(online):
-            if not os.path.exists(self.local_experiment_path(config)):
+            if not os.path.exists(self.local_experiment_path()):
                 status_label.value = 'Not started.'
                 run_button.disabled = False
                 complete_button.disabled = True
                 return
 
-            output_files = self.output_filenames(self.local_experiment_path(config))
-            if len(output_files) == len(self.changing_args):
+            output_files = self.output_filenames()
+            if len(output_files) == len(self._exp.changing_args):
                 status_label.value = 'Finished.'
                 run_button.disabled = True
                 complete_button.disabled = True
                 return
             elif len(output_files) > 0:
-                status_label.value = 'Finished. Only %d/%d output files' % (len(output_files), len(self.changing_args))
+                status_label.value = 'Finished. Only %d/%d output files' \
+                                     % (len(output_files), len(self._exp.changing_args))
                 run_button.disabled = True
                 complete_button.disabled = True
                 return
@@ -225,14 +233,14 @@ class SlurmExperiment(Experiment):
                 complete_button.disabled = False
                 return
 
-            job = self.job(config)
+            job = self.job()
             if job is None or job.status() == 0:
                 status_label.value = 'Unable to find job'
                 run_button.disabled = False
                 complete_button.disabled = False
                 return
 
-            status = self.job(config).status()
+            status = self.job().status()
             if set(status.keys()).issubset({'COMPLETED', 'TIMEOUT', 'CANCELLED+', 'CANCELLED'}):
                 status_label.value = 'Completed running. ' + str(status)
                 run_button.disabled = True
@@ -245,25 +253,21 @@ class SlurmExperiment(Experiment):
                 return
         update(False)
 
-        run_button.on_click(lambda b: self.run(config, num_workers, time, **kwargs) or update(True))
-        complete_button.on_click(lambda b: self.complete(config) or update(True))
+        run_button.on_click(lambda b: self.run(num_workers, time, **kwargs) or update(True))
+        complete_button.on_click(lambda b: self.complete() or update(True))
         refresh_button.on_click(lambda b: update(True))
 
         return widgets.HBox([run_button, complete_button, refresh_button, status_label])
 
-    def _preprocess(self, config):
+    def _preprocess(self):
         """
         This method will be run after all files are remotely copied but before the task is started.
-
-        :param config: The runtime server configuration.
         """
         pass
 
-    def _postprocess(self, config):
+    def _postprocess(self):
         """
         This method will be run after all files have been transferred from the server.
-
-        :param config: The runtime server configuration.
         """
         pass
 
@@ -273,142 +277,139 @@ class SlurmExperiment(Experiment):
         """
         pass
 
-    def _gather(self, config):
+    def _gather(self):
         """
         Download the results of the job from the server to the local machine.
 
-        :param config: The runtime server configuration.
         :return: None
         """
         # Ensure this experiment has finished
-        last = self.job(config)
+        last = self.job()
         if last and not last.finished(cache=True):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
-        with config.server.ftp_connect() as ftp:
+        with self._config.server.ftp_connect() as ftp:
             def gather_files(zip_name, files_to_include):
                 # Compress the zip file remotely
-                config.server.execute('zip -j ' + self.remote_experiment_path(config, zip_name)
-                                      + ' ' + files_to_include, timeout=1000)
+                self._config.server.execute('zip -j ' + self.remote_experiment_path(zip_name)
+                                            + ' ' + files_to_include, timeout=1000)
 
                 # Copy the zip file
-                ftp.get(self.remote_experiment_path(config, zip_name), self.local_experiment_path(config, zip_name))
+                ftp.get(self.remote_experiment_path(zip_name), self.local_experiment_path(zip_name))
 
                 # Decompress the zip file locally
-                with zipfile.ZipFile(self.local_experiment_path(config, zip_name)) as zip_file:
-                    zip_file.extractall(path=self.local_experiment_path(config))
+                with zipfile.ZipFile(self.local_experiment_path(zip_name)) as zip_file:
+                    zip_file.extractall(path=self.local_experiment_path())
 
             print('Experiment complete. Compressing and copying results.')
-            gather_files('_outputs.zip', self.remote_experiment_path(config, '*.out') +
-                                         ' ' + self.remote_experiment_path(config, '*.log'))
-            gather_files('_worker_logs.zip', self.remote_experiment_path(config, '*.worker'))
+            gather_files('_outputs.zip',
+                         self.remote_experiment_path('*.out') + ' ' + self.remote_experiment_path('*.log'))
+            gather_files('_worker_logs.zip', self.remote_experiment_path('*.worker'))
 
-    def _cleanup(self, config):
+    def _cleanup(self):
         """
         Delete all information for this experiment on the cluster.
 
-        :param config: The runtime server configuration.
         :return: None
         """
         # Ensure this experiment has finished
-        last = self.job(config)
+        last = self.job()
         if last and not last.finished(cache=True):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         # Delete all files from experiment server
-        print('Deleting files from remote server:', self.remote_experiment_path(config))
-        res = config.server.execute('rm -r ' + self.remote_experiment_path(config), timeout=1000)
+        print('Deleting files from remote server:', self.remote_experiment_path())
+        res = self._config.server.execute('rm -r ' + self.remote_experiment_path(), timeout=1000)
         if res != '':
             print(res)
 
-    def _setup_all(self, config, num_workers, time, cpus_per_worker=1, partition='commons'):
+    def _setup_all(self, num_workers, time, cpus_per_worker=1, partition='commons'):
         """
         Copy all experiment files from the local machine to the remote server. Prepare scripts to initiate the
         experiment.
 
-        :param config: The runtime server configuration.
         :param num_workers: The number of workers to use for each experiment (maximum 498).
-        :param time: The cutoff time to use for each worker.
+        :param time: The timeout to use for each worker.
         :param cpus_per_worker: The number of CPUs to provide for each worker.
         :param partition: The SLURM server partition to use.
         :return: A command to be run on the SLURM server to run the experiment.
         """
 
         # Ensure there are no current versions of this experiment running
-        last = self.job(config)
+        last = self.job()
         if last and not last.finished(cache=True):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         # Check if file data already exists on the server for this job
-        if config.server.execute('ls ' + self.remote_experiment_path(config)) != '':
-            res = input('Delete old data files (' + self.remote_experiment_path(config) + ') [Y/N]: ')
+        if self._config.server.execute('ls ' + self.remote_experiment_path()) != '':
+            res = input('Delete old data files (' + self.remote_experiment_path() + ') [Y/N]: ')
             if res.upper() == 'Y':
-                self._cleanup(config)
+                self._cleanup()
             else:
                 raise RuntimeError('Remove files in '
-                                   + self.remote_experiment_path(config)
+                                   + self.remote_experiment_path()
                                    + ' or change the experiment id')
 
         # Create local files
-        self.setup(self.local_experiment_path(config))
-        input_files = [f for f in os.listdir(self.local_experiment_path(config)) if re.match(r'\d+.in', f)]
+        self.setup()
+        input_files = [f for f in os.listdir(self.local_experiment_path()) if re.match(r'\d+.in', f)]
         print('Created ' + str(len(input_files)) + ' local files')
 
         # Create the remote directory structure
-        config.server.execute('mkdir -p ' + self.remote_experiment_path(config))
+        self._config.server.execute('mkdir -p ' + self.remote_experiment_path())
 
         # Craft the job script for the experiment
         script_builder = base_script()
-        script_builder.set("PROJECT", self.remote_experiment_path(config, ""))
-        script_builder.set("FULL_NAME", self.basename.lower() + '_' + self.id)
-        script_builder.set("ID", str(self.id))
+        script_builder.set("PROJECT", self.remote_experiment_path(""))
+        script_builder.set("FULL_NAME", str(self))
+        script_builder.set("ID", str(self._exp.id))
         script_builder.set("TIME", time)
         script_builder.set("PARTITION", partition)
         script_builder.set("CPUS", str(cpus_per_worker))
         script_builder.set("NUM_WORKERS", str(num_workers))
-        script_builder.set("SETUP", self.setup_commands)
+        script_builder.set("SETUP", self._exp.setup_commands)
 
         # Save the job script locally for the experiment
         job_file = '_run.sh'
-        with io.open(self.local_experiment_path(config, job_file), 'w', newline='\n') as f:
+        with io.open(self.local_experiment_path(job_file), 'w', newline='\n') as f:
             f.write(script_builder.build())
 
         # Compress input files locally
         input_zip = '_inputs.zip'
-        with zipfile.ZipFile(self.local_experiment_path(config, input_zip), 'w') as zipf:
+        with zipfile.ZipFile(self.local_experiment_path(input_zip), 'w') as zipf:
             for input_file in input_files:
-                zipf.write(self.local_experiment_path(config, input_file), input_file)
+                zipf.write(self.local_experiment_path(input_file), input_file)
         print('Compressed local files')
 
         # Copy input files and script to the remote server
-        with config.server.ftp_connect() as ftp:
-            ftp.put(self.local_experiment_path(config, input_zip), self.remote_experiment_path(config, input_zip))
-            ftp.put(self.local_experiment_path(config, job_file), self.remote_experiment_path(config, job_file))
+        with self._config.server.ftp_connect() as ftp:
+            ftp.put(self.local_experiment_path(input_zip), self.remote_experiment_path(input_zip))
+            ftp.put(self.local_experiment_path(job_file), self.remote_experiment_path(job_file))
 
-            for dep in self.dependencies:
+            for dep in self._exp.dependencies:
                 if '/' in dep:
-                    config.server.execute('mkdir -p ' + self.remote_experiment_path(config, dep[:dep.rfind('/')]))
-                ftp.put(self.local_project_path(config, dep), self.remote_experiment_path(config, dep))
+                    self._config.server.execute('mkdir -p ' + self.remote_experiment_path(dep[:dep.rfind('/')]))
+                ftp.put(self.local_project_path(dep), self.remote_experiment_path(dep))
         print('Copied files to remote server')
 
         # Decompress input files on remote server
-        config.server.execute('unzip ' + self.remote_experiment_path(config, input_zip)
-                              + ' -d ' + self.remote_experiment_path(config))
+        self._config.server.execute('unzip ' + self.remote_experiment_path(input_zip)
+                                    + ' -d ' + self.remote_experiment_path())
 
         # Prepare the job script (and input files) for execution
         for file in input_files:
-            config.server.execute('chmod +x ' + self.remote_experiment_path(config, file))
+            self._config.server.execute('chmod +x ' + self.remote_experiment_path(file))
 
-        self._preprocess(config)
+        self._preprocess()
 
         # Generate a command to complete submission
         return 'sbatch --output={0} --array=0-{1} {2} {3}'.format(
-            self.remote_experiment_path(config, 'slurm-%A_%a.worker'),
+            self.remote_experiment_path('slurm-%A_%a.worker'),
             str(num_workers - 1),
-            self.remote_experiment_path(config, job_file), str(num_workers))
+            self.remote_experiment_path(job_file), str(num_workers))
 
     def __str__(self):
-        return "<" + self.basename + ":" + self.id + ">"
+        return self._exp.__str__()
 
 
 def run_chain(experiments, config, time, num_workers=498, partition='commons', **kwargs):
@@ -418,6 +419,7 @@ def run_chain(experiments, config, time, num_workers=498, partition='commons', *
 
     :param experiments: A list of experiments to run.
     :param config: The runtime server configuration.
+    :param time: The timeout to use to run each experiment.
     :param num_workers: The number of workers to use for each experiment (maximum 498).
     :param partition: The SLURM server partition to use.
     :param kwargs: Passed to the _setup_all function.
@@ -429,20 +431,22 @@ def run_chain(experiments, config, time, num_workers=498, partition='commons', *
         raise RuntimeError('No experiments provided')
     if len(experiments) == 1:
         print('Only one experiment specified; chain is not needed')
-        experiments[0].run(config, num_workers, partition=partition, **kwargs)
+        experiments[0].slurm_instance(config).run(num_workers, time, partition=partition, **kwargs)
         return
 
     chain_file = '_start.sh'
 
     for exp, next_exp in zip(experiments, experiments[1:] + [None]):
         print('Initializing', exp)
-        start = exp.setup(config, num_workers, time, partition=partition, **kwargs)
+
+        exp = exp.slurm_instance(config)
+        start = exp.setup(num_workers, time, partition=partition, **kwargs)
 
         # Craft the continuation script to begin the next round
         script_builder = continuation_script()
         script_builder.set("START_JOB", start)
         script_builder.set("PARTITION", partition)
-        script_builder.set("FULL_NAME", exp.basename.lower() + '_' + exp.id)
+        script_builder.set("FULL_NAME", str(exp))
 
         if next_exp is None:
             script_builder.set("START_NEXT_LINK", "# No further link to run")
@@ -453,20 +457,20 @@ def run_chain(experiments, config, time, num_workers=498, partition='commons', *
             if exp != experiments[0]:
                 next_link_command += ':$SLURM_JOB_ID'  # Also wait for the current monitor job to finish
 
-                next_link_command += ' ' + next_exp.remote_experiment_path(config, chain_file)
+                next_link_command += ' ' + next_exp.remote_experiment_path(chain_file)
 
             script_builder.set("START_NEXT_LINK", next_link_command)
 
-        with io.open(exp.local_experiment_path(config, chain_file), 'w', newline='\n') as f:
+        with io.open(exp.local_experiment_path(chain_file), 'w', newline='\n') as f:
             f.write(script_builder.build())
 
     print('Copying continuation files to remote server')
     ftp = config.server.open_sftp()
     for exp in experiments:
-        ftp.put(exp.local_experiment_path(config, chain_file), exp.remote_experiment_path(config, chain_file))
+        ftp.put(exp.local_experiment_path(chain_file), exp.remote_experiment_path(chain_file))
         # Prepare the chain script for execution
-        config.server.execute('chmod +x ' + exp.remote_experiment_path(config, chain_file))
+        config.server.execute('chmod +x ' + exp.remote_experiment_path(chain_file))
     ftp.close()
 
     print('Starting first link')
-    config.server.execute(experiments[0].remote_experiment_path(config, chain_file))
+    config.server.execute(experiments[0].remote_experiment_path(chain_file))

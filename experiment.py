@@ -1,11 +1,10 @@
 import ast
-import itertools
-import sqlite3
-import pandas as pd
 import io
 import json
 import os
+import pandas as pd
 import pandas.io.sql
+import sqlite3
 
 
 class Experiment:
@@ -13,7 +12,21 @@ class Experiment:
         self.command = command
         self.changing_args = changing_args
 
-    def setup(self, experiment_directory):
+    def instance(self, local_directory):
+        return ExperimentInstance(self, local_directory)
+
+
+class ExperimentInstance:
+    def __init__(self, experiment_base, local_directory):
+        """
+        Create .in files for this experiment in the provided directory
+
+        :param local_directory: The directory to place .in files and read .out files (created if does not exist)
+        """
+        self._exp = experiment_base
+        self._local_directory = local_directory
+
+    def setup(self):
         """
         Create .in files for this experiment in the provided directory
 
@@ -21,25 +34,25 @@ class Experiment:
         :return:
         """
         # Create the local directory structure
-        if not os.path.exists(experiment_directory):
-            os.makedirs(experiment_directory)
+        if not os.path.exists(self._local_directory):
+            os.makedirs(self._local_directory)
 
         # Craft input files for each worker
         input_files = []
-        for count, args in enumerate(self.changing_args):
+        for count, args in enumerate(self._exp.changing_args):
             args = dict(args)
 
-            number = str(count).zfill(len(str(len(self.changing_args))))  # Prepend with padded zeros
+            number = str(count).zfill(len(str(len(self._exp.changing_args))))  # Prepend with padded zeros
 
             args['output'] = "./" + number + '.out'
 
-            input_file = io.open(experiment_directory + '/' + number + '.in', 'w', newline='\n')
+            input_file = io.open(self._local_directory + '/' + number + '.in', 'w', newline='\n')
 
             # Write the arguments as the first line of the output file
             input_file.write('echo "' + json.dumps(args).replace('"', '\\"') + '" > ' + args['output'])
             input_file.write('\n')
 
-            input_file.write(self.command)
+            input_file.write(self._exp.command)
 
             if '' in args:
                 for positional_arg in args['']:
@@ -55,7 +68,7 @@ class Experiment:
             input_file.write('\n')
             input_file.close()
 
-    def output_filenames(self, experiment_directory):
+    def output_filenames(self):
         """
         Get all files that were output by this experiment.
 
@@ -63,15 +76,15 @@ class Experiment:
         :return: A list of full paths, each one an output file of this experiment.
         """
         result = []
-        for filename in os.listdir(experiment_directory):
+        for filename in os.listdir(self._local_directory):
             if filename.endswith('.out'):
-                result.append(experiment_directory + '/' + filename)
+                result.append(self._local_directory + '/' + filename)
         return result
 
     def __len__(self):
-        return len(self.changing_args)
+        return len(self._exp.changing_args)
 
-    def query(self, experiment_directory, query):
+    def query(self, query):
         """
         Query the database of results.
 
@@ -79,11 +92,11 @@ class Experiment:
         :param query: An SQL query to run
         :return: A pandas dataframe with the results of the query
         """
-        with self.get_database(experiment_directory) as db:
+        with self.get_database() as db:
             data = pd.read_sql_query(query, db)
             return data
 
-    def get_database(self, experiment_directory):
+    def get_database(self):
         """
         Open a connection to the database used to cache results.
 
@@ -93,25 +106,22 @@ class Experiment:
         :param config: The runtime server configuration.
         :return: A connection to the database used to cache results.
         """
-        return SQLiteConnection(experiment_directory + "/_results.db")
+        return SQLiteConnection(self._local_directory + "/_results.db")
 
-    def create_database(self, experiment_directory, data_columns, primary_key):
+    def create_database(self):
         """
         Save data from output files into the database, overwriting the existing _results.db file if it exists
 
         These output files must have a particular format. The first line should contain a dictionary, representing
         the parameters of the task. All remaining lines should be of the form "Key: Value"
 
-        :param config: The runtime server configuration.
-        :param data_columns: A list of (column name, column type) tuples indicating the structure of each data point.
-        :param primary_key: A primary key to use for the "data" database. Note a "file" column is available.
         :return: None
         """
         print("Reading all output data into SQL table")
 
-        output_files = self.output_filenames(experiment_directory)
+        output_files = self.output_filenames()
         if len(output_files) == 0:
-            raise FileNotFoundError('No output files found in ' + experiment_directory)
+            raise FileNotFoundError('No output files found in ' + self._local_directory)
 
         # Gather the results from all output files
         data = []
@@ -149,7 +159,7 @@ class Experiment:
                     raise ValueError('Malformed value while scanning ' + filename)
 
         # Save the results to the database
-        with self.get_database(experiment_directory) as db:
+        with self.get_database() as db:
             # We want to set PRIMARY KEY to be the file column, but pd.DataFrame.to_sql does not support primary keys
             # See https://stackoverflow.com/questions/30867390/python-pandas-to-sql-how-to-create-a-table-with-a-primary-key
             pandas_sql = pd.io.sql.pandasSQL_builder(db)
