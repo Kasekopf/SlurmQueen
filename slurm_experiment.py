@@ -1,10 +1,10 @@
 import io
 import os
-import json
 import zipfile
 import re
 from slurm_script import base_script, continuation_script
 from ipywidgets import widgets
+from experiment import Experiment
 
 
 class ExperimentConfig:
@@ -44,9 +44,9 @@ def copy_dependencies(exp, config, dependencies):
             ftp.put(exp.local_project_path(config, filename), exp.remote_experiment_path(config, filename))
 
 
-class SlurmExperiment:
+class SlurmExperiment(Experiment):
     def __init__(self, basename, exp_id, command, dependencies,
-                 changing_args=None, setup_commands=None):
+                 changing_args, setup_commands=None):
         """
         Initialize an experiment.
 
@@ -56,11 +56,10 @@ class SlurmExperiment:
         :param changing_args: a list of dictionaries; each dictionary defines a new task
         :param setup_commands: The setup to perform on each worker node before beginning tasks
         """
+        super().__init__(command, changing_args)
 
         self.basename = basename
         self.id = exp_id
-        self.command = command
-        self.changing_args = changing_args
         self.dependencies = dependencies
         self.setup_commands = setup_commands
 
@@ -141,14 +140,14 @@ class SlurmExperiment:
 
         :param config: The runtime server configuration.
         :param num_workers: The number of workers to use for this experiment.
-        :param kwargs: Passed to the _setup function.
+        :param kwargs: Passed to the _setup_all function.
         :return: None
         """
         if num_workers < 0:
             num_workers = len(self)
             print('Running across ' + str(num_workers) + ' nodes')
 
-        command = self._setup(config, num_workers, time, **kwargs)
+        command = self._setup_all(config, num_workers, time, **kwargs)
         print('Attempting to submit job')
         print(config.server.execute(command))
 
@@ -174,7 +173,7 @@ class SlurmExperiment:
         """
         if not os.path.exists(self.local_experiment_path(config)):
             return False
-        output_files = self.output_filenames(config)
+        output_files = self.output_filenames(self.local_experiment_path(config))
         if len(output_files) > 0:
             if len(output_files) < len(self.changing_args) and verbose:
                 print('Finished. Only %d/%d output files.' % (len(output_files), len(self.changing_args)))
@@ -208,7 +207,7 @@ class SlurmExperiment:
                 complete_button.disabled = True
                 return
 
-            output_files = self.output_filenames(config)
+            output_files = self.output_filenames(self.local_experiment_path(config))
             if len(output_files) == len(self.changing_args):
                 status_label.value = 'Finished.'
                 run_button.disabled = True
@@ -322,45 +321,7 @@ class SlurmExperiment:
         if res != '':
             print(res)
 
-    def setup(self, experiment_directory):
-        """
-        Create .in files for this experiment in the provided directory
-
-        :param experiment_directory: The directory to place .in files (created if does not exist)
-        :return:
-        """
-        # Create the local directory structure
-        if not os.path.exists(experiment_directory):
-            os.makedirs(experiment_directory)
-
-        # Craft input files for each worker
-        input_files = []
-        for count, args in enumerate(self.changing_args):
-            args = dict(args)
-
-            number = str(count).zfill(len(str(len(self.changing_args))))  # Prepend with padded zeros
-
-            args['output'] = "./" + number + '.out'
-
-            input_file = io.open(experiment_directory + '/' + number + '.in', 'w', newline='\n')
-
-            # Write the arguments as the first line of the output file
-            input_file.write('echo "' + json.dumps(args).replace('"', '\\"') + '" > ' + args['output'])
-            input_file.write('\n')
-
-            input_file.write(self.command)
-
-            if '' in args:
-                for positional_arg in args['']:
-                    input_file.write(' "' + str(positional_arg) + '"')
-            for arg_key in args:
-                if arg_key != '':  # named argument
-                    input_file.write(' --' + str(arg_key) + '="' + str(args[arg_key]) + '"')
-            input_file.write(' &> ' + './' + number + '.log')
-            input_file.write('\n')
-            input_file.close()
-
-    def _setup(self, config, num_workers, time, cpus_per_worker=1, partition='commons'):
+    def _setup_all(self, config, num_workers, time, cpus_per_worker=1, partition='commons'):
         """
         Copy all experiment files from the local machine to the remote server. Prepare scripts to initiate the
         experiment.
@@ -446,25 +407,6 @@ class SlurmExperiment:
             str(num_workers - 1),
             self.remote_experiment_path(config, job_file), str(num_workers))
 
-    def output_filenames(self, config):
-        """
-        Get all files that were output by this experiment.
-
-        :param config: The runtime server configuration.
-        :return: A list of full paths, each one an output file of this experiment.
-        """
-        result = []
-        for filename in os.listdir(self.local_experiment_path(config)):
-            if 'slurm' in filename:
-                continue
-            if not filename.endswith('.out'):
-                continue
-            result.append(self.local_experiment_path(config, filename))
-        return result
-
-    def __len__(self):
-        return len(self.changing_args)
-
     def __str__(self):
         return "<" + self.basename + ":" + self.id + ">"
 
@@ -478,7 +420,7 @@ def run_chain(experiments, config, time, num_workers=498, partition='commons', *
     :param config: The runtime server configuration.
     :param num_workers: The number of workers to use for each experiment (maximum 498).
     :param partition: The SLURM server partition to use.
-    :param kwargs: Passed to the _setup function.
+    :param kwargs: Passed to the _setup_all function.
     :return: None
     """
     if num_workers > 498:
