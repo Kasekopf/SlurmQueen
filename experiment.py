@@ -2,6 +2,7 @@ import io
 import os
 import json
 import zipfile
+import re
 from slurm_script import base_script, continuation_script
 from ipywidgets import widgets
 
@@ -44,32 +45,24 @@ def copy_dependencies(exp, config, dependencies):
 
 
 class Experiment:
-    def __init__(self, basename, exp_id, script, time, args,
-                 modules=None, changing_args=None):
+    def __init__(self, basename, exp_id, command, dependencies,
+                 changing_args=None, setup_commands=None):
         """
         Initialize an experiment.
 
         :param basename: string name of the experiment (e.g. 'CNFXOR')
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
-        :param script: name of the python script to run, relative to experiment folder (e.g. 'cnfxor.py')
-        :param time: time to be given to each worker (e.g. '10:00')
-        :param args: dictionary to be passed to every task
+        :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param changing_args: a list of dictionaries; each dictionary defines a new task
+        :param setup_commands: The setup to perform on each worker node before beginning tasks
         """
 
         self.basename = basename
         self.id = exp_id
-        self.script = script
-        self.time = time
-        self.args = args
+        self.command = command
         self.changing_args = changing_args
-        self.modules = modules
-        if self.modules is None:
-            self.modules = []
-
-        self.args['experiment_name'] = basename
-        self.args['experiment_id'] = exp_id
-        self.args['script'] = script
+        self.dependencies = dependencies
+        self.setup_commands = setup_commands
 
     def job(self, config):
         """
@@ -139,11 +132,10 @@ class Experiment:
         res = []
         for i in range(num_partitions):
             args_subset = self.changing_args[(i*size):(i*size+size)]
-            res.append(Experiment(self.basename, self.id + '/' + str(i), self.script, self.time,
-                                  self.args, args_subset))
+            res.append(Experiment(self.basename, self.id + '/' + str(i), self.command, args_subset))
         return res
 
-    def run(self, config, num_workers, **kwargs):
+    def run(self, config, num_workers, time, **kwargs):
         """
         Run this experiment on the provided SLURM server. If successful, print the job id used.
 
@@ -156,7 +148,7 @@ class Experiment:
             num_workers = len(self)
             print('Running across ' + str(num_workers) + ' nodes')
 
-        command = self._setup(config, num_workers, **kwargs)
+        command = self._setup(config, num_workers, time, **kwargs)
         print('Attempting to submit job')
         print(config.server.execute(command))
 
@@ -195,7 +187,7 @@ class Experiment:
         else:
             return self.ipython_gui(config, num_workers, **kwargs)
 
-    def ipython_gui(self, config, num_workers, **kwargs):
+    def ipython_gui(self, config, num_workers, time, **kwargs):
         """
         Build a iPython GUI for running and completing this experiment. All arguments are passed unchanged to "run".
 
@@ -254,7 +246,7 @@ class Experiment:
                 return
         update(False)
 
-        run_button.on_click(lambda b: self.run(config, num_workers, **kwargs) or update(True))
+        run_button.on_click(lambda b: self.run(config, num_workers, time, **kwargs) or update(True))
         complete_button.on_click(lambda b: self.complete(config) or update(True))
         refresh_button.on_click(lambda b: update(True))
 
@@ -294,21 +286,23 @@ class Experiment:
         if last and not last.finished(cache=True):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
-        # Compress all *.out files into a single remote .zip
-        print('Experiment complete. Compressing results.')
-        output = '_outputs.zip'
-        config.server.execute('zip -j ' + self.remote_experiment_path(config, output)
-                              + ' ' + self.remote_experiment_path(config, '*.out'), timeout=1000)
-
-        # Copy the output zip file locally
-        print('Copying results to local directory')
         with config.server.ftp_connect() as ftp:
-            ftp.get(self.remote_experiment_path(config, output), self.local_experiment_path(config, output))
+            def gather_files(zip_name, files_to_include):
+                # Compress the zip file remotely
+                config.server.execute('zip -j ' + self.remote_experiment_path(config, zip_name)
+                                      + ' ' + files_to_include, timeout=1000)
 
-        # Decompress output files locally
-        print('Decompressing local results')
-        with zipfile.ZipFile(self.local_experiment_path(config, output)) as zip_file:
-            zip_file.extractall(path=self.local_experiment_path(config))
+                # Copy the zip file
+                ftp.get(self.remote_experiment_path(config, zip_name), self.local_experiment_path(config, zip_name))
+
+                # Decompress the zip file locally
+                with zipfile.ZipFile(self.local_experiment_path(config, zip_name)) as zip_file:
+                    zip_file.extractall(path=self.local_experiment_path(config))
+
+            print('Experiment complete. Compressing and copying results.')
+            gather_files('_outputs.zip', self.remote_experiment_path(config, '*.out') +
+                                         ' ' + self.remote_experiment_path(config, '*.log'))
+            gather_files('_worker_logs.zip', self.remote_experiment_path(config, '*.worker'))
 
     def _cleanup(self, config):
         """
@@ -328,13 +322,52 @@ class Experiment:
         if res != '':
             print(res)
 
-    def _setup(self, config, num_workers, cpus_per_worker=1, partition='commons'):
+    def setup(self, experiment_directory):
+        """
+        Create .in files for this experiment in the provided directory
+
+        :param experiment_directory: The directory to place .in files (created if does not exist)
+        :return:
+        """
+        # Create the local directory structure
+        if not os.path.exists(experiment_directory):
+            os.makedirs(experiment_directory)
+
+        # Craft input files for each worker
+        input_files = []
+        for count, args in enumerate(self.changing_args):
+            args = dict(args)
+
+            number = str(count).zfill(len(str(len(self.changing_args))))  # Prepend with padded zeros
+
+            args['output'] = "./" + number + '.out'
+
+            input_file = io.open(experiment_directory + '/' + number + '.in', 'w', newline='\n')
+
+            # Write the arguments as the first line of the output file
+            input_file.write('echo "' + json.dumps(args).replace('"', '\\"') + '" > ' + args['output'])
+            input_file.write('\n')
+
+            input_file.write(self.command)
+
+            if '' in args:
+                for positional_arg in args['']:
+                    input_file.write(' "' + str(positional_arg) + '"')
+            for arg_key in args:
+                if arg_key != '':  # named argument
+                    input_file.write(' --' + str(arg_key) + '="' + str(args[arg_key]) + '"')
+            input_file.write(' &> ' + './' + number + '.log')
+            input_file.write('\n')
+            input_file.close()
+
+    def _setup(self, config, num_workers, time, cpus_per_worker=1, partition='commons'):
         """
         Copy all experiment files from the local machine to the remote server. Prepare scripts to initiate the
         experiment.
 
         :param config: The runtime server configuration.
         :param num_workers: The number of workers to use for each experiment (maximum 498).
+        :param time: The cutoff time to use for each worker.
         :param cpus_per_worker: The number of CPUs to provide for each worker.
         :param partition: The SLURM server partition to use.
         :return: A command to be run on the SLURM server to run the experiment.
@@ -355,60 +388,29 @@ class Experiment:
                                    + self.remote_experiment_path(config)
                                    + ' or change the experiment id')
 
-        # Create the local directory structure
-        if not os.path.exists(self.local_experiment_path(config)):
-            os.makedirs(self.local_experiment_path(config))
+        # Create local files
+        self.setup(self.local_experiment_path(config))
+        input_files = [f for f in os.listdir(self.local_experiment_path(config)) if re.match(r'\d+.in', f)]
+        print('Created ' + str(len(input_files)) + ' local files')
 
         # Create the remote directory structure
         config.server.execute('mkdir -p ' + self.remote_experiment_path(config))
-        config.server.execute('mkdir -p ' + self.remote_experiment_path(config))
-        self.args["project_directory"] = self.remote_experiment_path(config)
-
-        # Provide workers with a temporary directory to use
-        config.server.execute('mkdir -p ' + self.remote_experiment_path(config, 'temp/'))
-        self.args["temp_directory"] = self.remote_experiment_path(config, 'temp/')
 
         # Craft the job script for the experiment
         script_builder = base_script()
-
-        script_builder.set("ARGS", '"' + json.dumps(self.args).replace('"', '\\"') + '"')
-        script_builder.set("SCRIPT", self.remote_experiment_path(config, self.script))
         script_builder.set("PROJECT", self.remote_experiment_path(config, ""))
         script_builder.set("FULL_NAME", self.basename.lower() + '_' + self.id)
         script_builder.set("ID", str(self.id))
-        script_builder.set("IN", '"' + self.remote_experiment_path(config, '$SLURM_ARRAY_TASK_ID.in') + '"')
-        script_builder.set("TIME", str(self.time))
+        script_builder.set("TIME", time)
         script_builder.set("PARTITION", partition)
         script_builder.set("CPUS", str(cpus_per_worker))
-
-        modules_load = ''
-        for m in self.modules:
-            modules_load += 'module load ' + m + '\n'
-        script_builder.set("MODULES", modules_load)
+        script_builder.set("NUM_WORKERS", str(num_workers))
+        script_builder.set("SETUP", self.setup_commands)
 
         # Save the job script locally for the experiment
         job_file = '_run.sh'
         with io.open(self.local_experiment_path(config, job_file), 'w', newline='\n') as f:
             f.write(script_builder.build())
-
-        # Craft input files for each worker
-        input_files = [str(worker_id) + '.in' for worker_id in range(num_workers)]
-        inputs = [io.open(self.local_experiment_path(config, input_file), 'w', newline='\n')
-                  for input_file in input_files]
-        for count, fresh_args in enumerate(self.changing_args):
-            fresh_args = dict(fresh_args)
-
-            number = str(count).zfill(len(str(len(self.changing_args))))  # Prepend with padded zeros
-            fresh_args['output_file'] = self.remote_experiment_path(config, number + '.out')
-            fresh_args['task_id'] = str(count)
-
-            inputs[count % num_workers].write(json.dumps(fresh_args))
-            inputs[count % num_workers].write('\n')
-        for input_file in inputs:
-            input_file.close()
-
-        input_files.append(job_file)  # Include the job script in the list of files to copy
-        print('Created local files')
 
         # Compress input files locally
         input_zip = '_inputs.zip'
@@ -420,25 +422,27 @@ class Experiment:
         # Copy input files and script to the remote server
         with config.server.ftp_connect() as ftp:
             ftp.put(self.local_experiment_path(config, input_zip), self.remote_experiment_path(config, input_zip))
+            ftp.put(self.local_experiment_path(config, job_file), self.remote_experiment_path(config, job_file))
 
-            if '/' in self.script:
-                config.server.execute('mkdir -p ' + self.remote_experiment_path(config, self.script[:self.script.rfind('/')]))
-            ftp.put(self.local_project_path(config, self.script), self.remote_experiment_path(config, self.script))
-
+            for dep in self.dependencies:
+                if '/' in dep:
+                    config.server.execute('mkdir -p ' + self.remote_experiment_path(config, dep[:dep.rfind('/')]))
+                ftp.put(self.local_project_path(config, dep), self.remote_experiment_path(config, dep))
         print('Copied files to remote server')
 
         # Decompress input files on remote server
         config.server.execute('unzip ' + self.remote_experiment_path(config, input_zip)
                               + ' -d ' + self.remote_experiment_path(config))
 
-        # Prepare the job script for execution
-        config.server.execute('chmod +x ' + self.remote_experiment_path(config, job_file))
+        # Prepare the job script (and input files) for execution
+        for file in input_files:
+            config.server.execute('chmod +x ' + self.remote_experiment_path(config, file))
 
         self._preprocess(config)
 
         # Generate a command to complete submission
         return 'sbatch --output={0} --array=0-{1} {2} {3}'.format(
-            self.remote_experiment_path(config, 'slurm-%A_%a.out'),
+            self.remote_experiment_path(config, 'slurm-%A_%a.worker'),
             str(num_workers - 1),
             self.remote_experiment_path(config, job_file), str(num_workers))
 
@@ -465,7 +469,7 @@ class Experiment:
         return "<" + self.basename + ":" + self.id + ">"
 
 
-def run_chain(experiments, config, num_workers=498, partition='commons', **kwargs):
+def run_chain(experiments, config, time, num_workers=498, partition='commons', **kwargs):
     """
     Run the set of experiment as a chain. That is, each experiment will run in order, with each experiment beginning
     when all jobs started by the previous experiment have completed.
@@ -490,7 +494,7 @@ def run_chain(experiments, config, num_workers=498, partition='commons', **kwarg
 
     for exp, next_exp in zip(experiments, experiments[1:] + [None]):
         print('Initializing', exp)
-        start = exp.setup(config, num_workers, partition=partition, **kwargs)
+        start = exp.setup(config, num_workers, time, partition=partition, **kwargs)
 
         # Craft the continuation script to begin the next round
         script_builder = continuation_script()

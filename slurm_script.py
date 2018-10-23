@@ -47,13 +47,14 @@ def base_script():
 echo Experiment: [$$ID]
 echo Worker Num: $SLURM_ARRAY_TASK_ID
 echo Total Workers: $1
-echo Base Arguments: [$$ARGS]
 
-[$$MODULES]
+[$$SETUP]
+
 cd [$$PROJECT]
-python [$$SCRIPT] [$$ARGS] [$$IN]
+for file in `find *.in | awk "(NR - 1) % $1 == $SLURM_ARRAY_TASK_ID"`; do
+  ./$file
+done
 """)
-
 
 def continuation_script():
     """
