@@ -98,6 +98,9 @@ class ExperimentInstance:
         :param query: An SQL query to run
         :return: A pandas dataframe with the results of the query
         """
+        if not os.path.exists(self.local_experiment_path("_results.db")):
+            self.create_database()
+
         with self.get_database() as db:
             data = pd.read_sql_query(query, db)
             return data
@@ -111,7 +114,7 @@ class ExperimentInstance:
 
         :return: A connection to the database used to cache results.
         """
-        return SQLiteConnection(self._local_directory + "/_results.db")
+        return SQLiteConnection(self.local_experiment_path("_results.db"))
 
     def create_database(self):
         """
@@ -144,9 +147,10 @@ class ExperimentInstance:
                     datum['file'] = file_id
 
                     for line in lines[1:]:
-                        print(line)
-                        if len(line) == 1: continue
-                        if ":" not in line: continue
+                        if len(line) == 1:
+                            continue
+                        if ":" not in line:
+                            continue
 
                         key_value_pair = line.split(":")
                         if key_value_pair[1] is "inf" or key_value_pair[1] is "nan":
