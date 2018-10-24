@@ -26,24 +26,6 @@ class ExperimentConfig:
         return self.__remote_directory
 
 
-def copy_dependencies(exp, config, dependencies):
-    """
-    Copy the provided project files to the server.
-
-    :param exp: The current experiment.
-    :param config: The runtime server configuration.
-    :param dependencies: A list of project files to copy (relative to the project directory).
-    :return: None
-    """
-    with config.server.ftp_connect() as ftp:
-        for filename in dependencies:
-            # If the dependency belongs in a separate folder, make it
-            if '/' in filename:
-                config.server.execute('mkdir -p ' + exp.remote_experiment_path(config, filename[:filename.rfind('/')]))
-
-            ftp.put(exp.local_project_path(config, filename), exp.remote_experiment_path(config, filename))
-
-
 class SlurmExperiment(Experiment):
     def __init__(self, basename, exp_id, command, dependencies,
                  changing_args, setup_commands=None):
@@ -92,7 +74,7 @@ class SlurmInstance(ExperimentInstance):
     def __init__(self, experiment_base, config):
         self._exp = experiment_base
         self._config = config
-        ExperimentInstance.__init__(self, experiment_base, self.local_experiment_path())
+        ExperimentInstance.__init__(self, experiment_base, self.local_project_path('experiments/' + self._exp.id))
 
     def job(self):
         """
@@ -124,15 +106,6 @@ class SlurmInstance(ExperimentInstance):
         :return: The full local name of the provided file.
         """
         return self._config.local_directory + '/' + self._exp.basename + '/' + filename
-
-    def local_experiment_path(self, filename=''):
-        """
-        Get the full name for a file contained in the experiment directory on the local machine.
-
-        :param filename: The name of the file relative to the experiment directory.
-        :return: The full local name of the provided file.
-        """
-        return self.local_project_path('experiments/' + self._exp.id + '/' + filename)
 
     def remote_experiment_path(self, filename=''):
         """
@@ -323,6 +296,22 @@ class SlurmInstance(ExperimentInstance):
         if res != '':
             print(res)
 
+    def copy_project_files_to_remote(self, files):
+        """
+        Copy the provided project files to the server, relative to the experiment directory.
+
+        :param files: A list of project files to copy (relative to the project directory).
+        :return: None
+        """
+        with self._config.server.ftp_connect() as ftp:
+            for filename in files:
+                # If the dependency belongs in a separate folder, make it
+                if '/' in filename:
+                    self._config.server.execute(
+                        'mkdir -p ' + self.remote_experiment_path(filename[:filename.rfind('/')]))
+
+                ftp.put(self.local_project_path(filename), self.remote_experiment_path(filename))
+
     def _setup_all(self, num_workers, time, cpus_per_worker=1, partition='commons'):
         """
         Copy all experiment files from the local machine to the remote server. Prepare scripts to initiate the
@@ -385,11 +374,7 @@ class SlurmInstance(ExperimentInstance):
         with self._config.server.ftp_connect() as ftp:
             ftp.put(self.local_experiment_path(input_zip), self.remote_experiment_path(input_zip))
             ftp.put(self.local_experiment_path(job_file), self.remote_experiment_path(job_file))
-
-            for dep in self._exp.dependencies:
-                if '/' in dep:
-                    self._config.server.execute('mkdir -p ' + self.remote_experiment_path(dep[:dep.rfind('/')]))
-                ftp.put(self.local_project_path(dep), self.remote_experiment_path(dep))
+        self.copy_project_files_to_remote(self._exp.dependencies)
         print('Copied files to remote server')
 
         # Decompress input files on remote server

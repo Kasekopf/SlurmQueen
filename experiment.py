@@ -26,11 +26,19 @@ class ExperimentInstance:
         self._exp = experiment_base
         self._local_directory = local_directory
 
+    def local_experiment_path(self, filename=''):
+        """
+        Get the full name for a file contained in the local directory.
+
+        :param filename: The name of the file relative to the local directory.
+        :return: The full local name of the provided file.
+        """
+        return self._local_directory + '/' + filename
+
     def setup(self):
         """
         Create .in files for this experiment in the provided directory
 
-        :param experiment_directory: The directory to place .in files (created if does not exist)
         :return:
         """
         # Create the local directory structure
@@ -46,7 +54,7 @@ class ExperimentInstance:
 
             args['output'] = "./" + number + '.out'
 
-            input_file = io.open(self._local_directory + '/' + number + '.in', 'w', newline='\n')
+            input_file = io.open(self.local_experiment_path(number + '.in'), 'w', newline='\n')
 
             # Write the arguments as the first line of the output file
             input_file.write('echo "' + json.dumps(args).replace('"', '\\"') + '" > ' + args['output'])
@@ -72,13 +80,12 @@ class ExperimentInstance:
         """
         Get all files that were output by this experiment.
 
-        :param config: The runtime server configuration.
         :return: A list of full paths, each one an output file of this experiment.
         """
         result = []
-        for filename in os.listdir(self._local_directory):
+        for filename in os.listdir(self.local_experiment_path()):
             if filename.endswith('.out'):
-                result.append(self._local_directory + '/' + filename)
+                result.append(self.local_experiment_path(filename))
         return result
 
     def __len__(self):
@@ -88,7 +95,6 @@ class ExperimentInstance:
         """
         Query the database of results.
 
-        :param config: The runtime server configuration.
         :param query: An SQL query to run
         :return: A pandas dataframe with the results of the query
         """
@@ -103,7 +109,6 @@ class ExperimentInstance:
         The "headers" database will contain the parameters used for each task.
         The "data" database will contain the data generated as a result of each task.
 
-        :param config: The runtime server configuration.
         :return: A connection to the database used to cache results.
         """
         return SQLiteConnection(self._local_directory + "/_results.db")
