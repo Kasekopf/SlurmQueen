@@ -8,19 +8,42 @@ import sqlite3
 
 
 class Experiment:
-    def __init__(self, command, changing_args):
+    def __init__(self, command, args):
+        """
+        Initialize an experiment, defined by running the command with parameters given by each dictionary in args.
+
+        The elements of each args dictionary will be passed to the command in each task as --key="value" pairs.
+        Keys that contain | will not be passed.
+        The key '', if it exists, should point to a list of positional arguments.
+
+        :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
+        :param args: a list of dictionaries; each dictionary defines a new task.
+        """
         self.command = command
-        self.changing_args = changing_args
+        self.args = args
 
     def instance(self, local_directory):
+        """
+        Construct an instance of this experiment located in the provided local_directory.
+
+        If local_directory does not exist, it will be created during experiment setup.
+
+        :param local_directory: A directory to store input and output data for this experiment
+        :return: An experiment instance, which can generate scripts to run this experiment and can run SQL queries on
+                 the results.
+        """
         return ExperimentInstance(self, local_directory)
 
 
 class ExperimentInstance:
     def __init__(self, experiment_base, local_directory):
         """
-        Create .in files for this experiment in the provided directory
+        Construct an instance of the provided experiment located in the provided local_directory.
+        This class can generate scripts to run the provided experiment and can run SQL queries on the results.
 
+        If local_directory does not exist, it will be created during experiment setup.
+
+        :param experiment_base: The experiment to run
         :param local_directory: The directory to place .in files and read .out files (created if does not exist)
         """
         self._exp = experiment_base
@@ -37,20 +60,21 @@ class ExperimentInstance:
 
     def setup(self):
         """
-        Create .in files for this experiment in the provided directory
+        Create .in files for this experiment in the local directory.
 
-        :return:
+        The local directory is created if it does not exist.
+
+        :return: None
         """
         # Create the local directory structure
         if not os.path.exists(self._local_directory):
             os.makedirs(self._local_directory)
 
         # Craft input files for each worker
-        input_files = []
-        for count, args in enumerate(self._exp.changing_args):
+        for count, args in enumerate(self._exp.args):
             args = dict(args)
 
-            number = str(count).zfill(len(str(len(self._exp.changing_args))))  # Prepend with padded zeros
+            number = str(count).zfill(len(str(len(self._exp.args))))  # Prepend with padded zeros
 
             args['output'] = "./" + number + '.out'
 
@@ -89,7 +113,7 @@ class ExperimentInstance:
         return result
 
     def __len__(self):
-        return len(self._exp.changing_args)
+        return len(self._exp.args)
 
     def query(self, query):
         """
@@ -109,8 +133,7 @@ class ExperimentInstance:
         """
         Open a connection to the database used to cache results.
 
-        The "headers" database will contain the parameters used for each task.
-        The "data" database will contain the data generated as a result of each task.
+        After running create_database, the "data" table will contain the data generated as a result of each task.
 
         :return: A connection to the database used to cache results.
         """
@@ -121,7 +144,7 @@ class ExperimentInstance:
         Save data from output files into the database, overwriting the existing _results.db file if it exists
 
         These output files must have a particular format. The first line should contain a dictionary, representing
-        the parameters of the task. All remaining lines should be of the form "Key: Value"
+        the parameters of the task. All remaining nonempty lines should be of the form "Key: Value"
 
         :return: None
         """
@@ -158,7 +181,7 @@ class ExperimentInstance:
 
                         try:
                             datum[key_value_pair[0].strip()] = ast.literal_eval(key_value_pair[1].strip())
-                        except ValueError: # Treat as string value
+                        except ValueError:  # Treat as string value
                             datum[key_value_pair[0].strip()] = key_value_pair[1].strip()
 
                     data.append(datum)
@@ -169,8 +192,8 @@ class ExperimentInstance:
 
         # Save the results to the database
         with self.get_database() as db:
-            # We want to set PRIMARY KEY to be the file column, but pd.DataFrame.to_sql does not support primary keys
-            # See https://stackoverflow.com/questions/30867390/python-pandas-to-sql-how-to-create-a-table-with-a-primary-key
+            # We want to set PRIMARY KEY to be the file column, but pd.DataFrame.to_sql does not support primary keys.
+            # https://stackoverflow.com/questions/30867390/python-pandas-to-sql-how-to-create-a-table-with-a-primary-key
             pandas_sql = pd.io.sql.pandasSQL_builder(db)
             table = pd.io.sql.SQLiteTable("data", pandas_sql, frame=pd.DataFrame(data), index=False,
                                           if_exists="replace", keys='file')

@@ -1,13 +1,19 @@
 import io
+import ipywidgets.widgets
 import os
-import zipfile
 import re
+import zipfile
+
 from slurm_script import base_script, continuation_script
-from ipywidgets import widgets
 from experiment import Experiment, ExperimentInstance
 
 
 class ExperimentConfig:
+    """
+    A class to store configuration information: the SLURM server, the directory on the local machine for
+    experimental results, and the directory on the SLURM machine to use for experimental computations.
+    """
+
     def __init__(self, server, local_directory, remote_directory):
         self.__server = server
         self.__local_directory = local_directory
@@ -27,18 +33,17 @@ class ExperimentConfig:
 
 
 class SlurmExperiment(Experiment):
-    def __init__(self, basename, exp_id, command, dependencies,
-                 changing_args, setup_commands=None):
+    def __init__(self, basename, exp_id, command, dependencies, args, setup_commands=None):
         """
         Initialize an experiment.
 
         :param basename: string name of the experiment (e.g. 'CNFXOR')
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
-        :param changing_args: a list of dictionaries; each dictionary defines a new task
+        :param args: a list of dictionaries; each dictionary defines a new task
         :param setup_commands: The setup to perform on each worker node before beginning tasks
         """
-        super().__init__(command, changing_args)
+        super().__init__(command, args)
 
         self.basename = basename
         self.id = exp_id
@@ -46,6 +51,15 @@ class SlurmExperiment(Experiment):
         self.setup_commands = setup_commands
 
     def slurm_instance(self, config):
+        """
+        Construct an instance of this experiment using the provided configuration.
+
+        If the configuration directories (local and remote) do not exist, they will be created during experiment setup.
+
+        :param config: The runtime server configuration
+        :return: An experiment instance, which can generate scripts to run this experiment, can run the scripts on the
+                 configured SLURM server, and can run SQL queries on the results.
+        """
         return SlurmInstance(self, config)
 
     def partition(self, max_size=498):
@@ -56,12 +70,12 @@ class SlurmExperiment(Experiment):
         :param max_size: The maximum number of tasks to include on each experiment.
         :return: A list of experiments, containing in total the same tasks of this experiment.
         """
-        num_partitions = int((max_size - 1 + len(self.changing_args)) / max_size)
-        size = int((num_partitions - 1 + len(self.changing_args)) / num_partitions)
+        num_partitions = int((max_size - 1 + len(self.args)) / max_size)
+        size = int((num_partitions - 1 + len(self.args)) / num_partitions)
 
         res = []
         for i in range(num_partitions):
-            args_subset = self.changing_args[(i*size):(i*size+size)]
+            args_subset = self.args[(i*size):(i*size+size)]
             res.append(SlurmExperiment(self.basename, self.id + '/' + str(i), self.command, self.dependencies,
                                        args_subset, setup_commands=self.setup_commands))
         return res
@@ -72,6 +86,16 @@ class SlurmExperiment(Experiment):
 
 class SlurmInstance(ExperimentInstance):
     def __init__(self, experiment_base, config):
+        """
+        Construct an instance of the provided experiment using the provided configuration.
+        This class can generate scripts to run the provided experiment, can run the scripts on the configured SLURM
+        server, and can run SQL queries on the results.
+
+        If the configuration directories (local and remote) do not exist, they will be created during experiment setup.
+
+        :param experiment_base: The experiment to run
+        :param config: The runtime server configuration
+        """
         self._exp = experiment_base
         self._config = config
         ExperimentInstance.__init__(self, experiment_base, self.local_project_path('experiments/' + self._exp.id))
@@ -142,7 +166,6 @@ class SlurmInstance(ExperimentInstance):
         """
         self._gather()
         self._cleanup()
-        self._postprocess()
 
     def finished(self, verbose=False):
         """
@@ -155,16 +178,16 @@ class SlurmInstance(ExperimentInstance):
             return False
         output_files = self.output_filenames()
         if len(output_files) > 0:
-            if len(output_files) < len(self._exp.changing_args) and verbose:
-                print('Finished. Only %d/%d output files.' % (len(output_files), len(self._exp.changing_args)))
+            if len(output_files) < len(self._exp.args) and verbose:
+                print('Finished. Only %d/%d output files.' % (len(output_files), len(self._exp.args)))
             return True
         return False
 
-    def analyze_or_gui(self, num_workers, **kwargs):
+    def analyze_or_gui(self, num_workers, time, **kwargs):
         if self.finished():
             return self.analyze()
         else:
-            return self.ipython_gui(num_workers, **kwargs)
+            return self.ipython_gui(num_workers, time, **kwargs)
 
     def ipython_gui(self, num_workers, time, **kwargs):
         """
@@ -172,13 +195,13 @@ class SlurmInstance(ExperimentInstance):
 
         :param num_workers: The number of workers to use for this experiment.
         :param time: The timeout to use for this experiment.
-        :param kwargs: Passed to the _setup function.
+        :param kwargs: Passed to the _setup_all function.
         :return: A GUI to manipulate this job.
         """
-        run_button = widgets.Button(description='Run', button_style='Danger')
-        complete_button = widgets.Button(description='Complete', button_style='info')
-        refresh_button = widgets.Button(description='Refresh', icon='check')
-        status_label = widgets.Label()
+        run_button = ipywidgets.widgets.Button(description='Run', button_style='Danger')
+        complete_button = ipywidgets.widgets.Button(description='Complete', button_style='info')
+        refresh_button = ipywidgets.widgets.Button(description='Refresh', icon='check')
+        status_label = ipywidgets.widgets.Label()
 
         def update(online):
             if not os.path.exists(self.local_experiment_path()):
@@ -188,14 +211,14 @@ class SlurmInstance(ExperimentInstance):
                 return
 
             output_files = self.output_filenames()
-            if len(output_files) == len(self._exp.changing_args):
+            if len(output_files) == len(self._exp.args):
                 status_label.value = 'Finished.'
                 run_button.disabled = True
                 complete_button.disabled = True
                 return
             elif len(output_files) > 0:
                 status_label.value = 'Finished. Only %d/%d output files' \
-                                     % (len(output_files), len(self._exp.changing_args))
+                                     % (len(output_files), len(self._exp.args))
                 run_button.disabled = True
                 complete_button.disabled = True
                 return
@@ -230,17 +253,11 @@ class SlurmInstance(ExperimentInstance):
         complete_button.on_click(lambda b: self.complete() or update(True))
         refresh_button.on_click(lambda b: update(True))
 
-        return widgets.HBox([run_button, complete_button, refresh_button, status_label])
+        return ipywidgets.widgets.HBox([run_button, complete_button, refresh_button, status_label])
 
     def _preprocess(self):
         """
         This method will be run after all files are remotely copied but before the task is started.
-        """
-        pass
-
-    def _postprocess(self):
-        """
-        This method will be run after all files have been transferred from the server.
         """
         pass
 
