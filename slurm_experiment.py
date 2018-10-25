@@ -279,10 +279,12 @@ class SlurmInstance(ExperimentInstance):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         with self._config.server.ftp_connect() as ftp:
-            def gather_files(zip_name, files_to_include):
+            def gather_files(zip_name, pattern):
                 # Compress the zip file remotely
-                self._config.server.execute('zip -j ' + self.remote_experiment_path(zip_name)
-                                            + ' ' + files_to_include, timeout=1000)
+                self._config.server.execute('zip -j %s $(ls %s | grep -E "%s")'
+                                            % (self.remote_experiment_path(zip_name),
+                                               self.remote_experiment_path('*'),
+                                               pattern))
 
                 # Copy the zip file
                 ftp.get(self.remote_experiment_path(zip_name), self.local_experiment_path(zip_name))
@@ -292,9 +294,8 @@ class SlurmInstance(ExperimentInstance):
                     zip_file.extractall(path=self.local_experiment_path())
 
             print('Experiment complete. Compressing and copying results.')
-            gather_files('_outputs.zip',
-                         self.remote_experiment_path('*.out') + ' ' + self.remote_experiment_path('*.log'))
-            gather_files('_worker_logs.zip', self.remote_experiment_path('*.worker'))
+            gather_files('_outputs.zip', '.*/[0-9]+\.(out|log)')
+            gather_files('_worker_logs.zip', '.*\.worker')
 
     def _cleanup(self):
         """
