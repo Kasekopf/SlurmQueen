@@ -80,6 +80,18 @@ class SlurmExperiment(Experiment):
                                        args_subset, setup_commands=self.setup_commands))
         return res
 
+    def prepare_server(self, instance):
+        """
+        This method will be run after all files are remotely copied but before the task is started.
+        """
+        print('Did not run...')
+
+    def analyze(self, instance):
+        """
+        Generate analysis (graphs, etc.) of the experiment.
+        """
+        pass
+
     def __str__(self):
         return self.basename.lower() + '_' + self.id
 
@@ -99,6 +111,10 @@ class SlurmInstance(ExperimentInstance):
         self._exp = experiment_base
         self._config = config
         ExperimentInstance.__init__(self, experiment_base, self.local_project_path('experiments/' + self._exp.id))
+
+    @property
+    def server(self):
+        return self._config.server
 
     def job(self):
         """
@@ -185,7 +201,7 @@ class SlurmInstance(ExperimentInstance):
 
     def analyze_or_gui(self, num_workers, time, **kwargs):
         if self.finished():
-            return self.analyze()
+            return self._exp.analyze(self)
         else:
             return self.ipython_gui(num_workers, time, **kwargs)
 
@@ -254,18 +270,6 @@ class SlurmInstance(ExperimentInstance):
         refresh_button.on_click(lambda b: update(True))
 
         return ipywidgets.widgets.HBox([run_button, complete_button, refresh_button, status_label])
-
-    def _preprocess(self):
-        """
-        This method will be run after all files are remotely copied but before the task is started.
-        """
-        pass
-
-    def analyze(self):
-        """
-        Generate analysis (graphs, etc.) of the experiment.
-        """
-        pass
 
     def _gather(self):
         """
@@ -403,7 +407,7 @@ class SlurmInstance(ExperimentInstance):
         for file in input_files:
             self._config.server.execute('chmod +x ' + self.remote_experiment_path(file))
 
-        self._preprocess()
+        self._exp.prepare_server(self)
 
         # Generate a command to complete submission
         return 'sbatch --output={0} --array=0-{1} {2} {3}'.format(
