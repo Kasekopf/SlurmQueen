@@ -44,10 +44,6 @@ def base_script():
 #SBATCH --cpus-per-task=[$$CPUS]
 #SBATCH --mem-per-cpu=4000m
 
-echo Experiment: [$$ID]
-echo Worker Num: $SLURM_ARRAY_TASK_ID
-echo Total Workers: $1
-
 [$$SETUP]
 
 cd [$$PROJECT]

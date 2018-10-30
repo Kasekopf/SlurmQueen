@@ -373,7 +373,6 @@ class SlurmInstance(ExperimentInstance):
         script_builder = base_script()
         script_builder.set("PROJECT", self.remote_experiment_path(""))
         script_builder.set("FULL_NAME", str(self))
-        script_builder.set("ID", str(self._exp.id))
         script_builder.set("TIME", time)
         script_builder.set("PARTITION", partition)
         script_builder.set("CPUS", str(cpus_per_worker))
