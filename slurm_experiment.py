@@ -33,11 +33,10 @@ class ExperimentConfig:
 
 
 class SlurmExperiment(Experiment):
-    def __init__(self, basename, exp_id, command, dependencies, args, setup_commands=None):
+    def __init__(self, exp_id, command, dependencies, args, setup_commands=None):
         """
         Initialize an experiment.
 
-        :param basename: string name of the experiment (e.g. 'CNFXOR')
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param args: a list of dictionaries; each dictionary defines a new task
@@ -45,7 +44,6 @@ class SlurmExperiment(Experiment):
         """
         super().__init__(command, args)
 
-        self.basename = basename
         self.id = exp_id
         self.dependencies = dependencies
         self.setup_commands = setup_commands
@@ -76,7 +74,7 @@ class SlurmExperiment(Experiment):
         res = []
         for i in range(num_partitions):
             args_subset = self.args[(i*size):(i*size+size)]
-            res.append(SlurmExperiment(self.basename, self.id + '/' + str(i), self.command, self.dependencies,
+            res.append(SlurmExperiment(self.id + '/' + str(i), self.command, self.dependencies,
                                        args_subset, setup_commands=self.setup_commands))
         return res
 
@@ -93,7 +91,7 @@ class SlurmExperiment(Experiment):
         pass
 
     def __str__(self):
-        return self.basename.lower() + '_' + self.id
+        return self.id
 
 
 class SlurmInstance(ExperimentInstance):
@@ -110,7 +108,7 @@ class SlurmInstance(ExperimentInstance):
         """
         self._exp = experiment_base
         self._config = config
-        ExperimentInstance.__init__(self, experiment_base, self.local_project_path('experiments/' + self._exp.id))
+        ExperimentInstance.__init__(self, experiment_base, self.local_project_path(self._exp.id))
 
     @property
     def server(self):
@@ -145,7 +143,7 @@ class SlurmInstance(ExperimentInstance):
         :param filename: The name of the file relative to the project directory.
         :return: The full local name of the provided file.
         """
-        return self._config.local_directory + '/' + self._exp.basename + '/' + filename
+        return self._config.local_directory + '/' + filename
 
     def remote_experiment_path(self, filename=''):
         """
@@ -154,7 +152,7 @@ class SlurmInstance(ExperimentInstance):
         :param filename: The name of the file relative to the experiment directory.
         :return: The full remote name of the provided file.
         """
-        return self._config.remote_directory + '/' + self._exp.basename.lower() + '/' + self._exp.id + '/' + filename
+        return self._config.remote_directory + '/' + self._exp.id + '/' + filename
 
     def run(self, num_workers, time, **kwargs):
         """
