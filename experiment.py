@@ -76,7 +76,7 @@ class ExperimentInstance:
 
             number = str(count).zfill(len(str(len(self._exp.args))))  # Prepend with padded zeros
 
-            args['output'] = "./" + number + '.out'
+            args['output'] = '$(dirname $0)/' + number + '.out'
 
             input_file = io.open(self.local_experiment_path(number + '.in'), 'w', newline='\n')
 
@@ -96,7 +96,7 @@ class ExperimentInstance:
                     continue
 
                 input_file.write(' --' + str(arg_key) + '="' + str(args[arg_key]) + '"')
-            input_file.write(' &> ' + './' + number + '.log')
+            input_file.write(' &> ' + '$(dirname $0)/' + number + '.log')
             input_file.write('\n')
             input_file.close()
 
