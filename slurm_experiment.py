@@ -33,13 +33,14 @@ class ExperimentConfig:
 
 
 class SlurmExperiment(Experiment):
-    def __init__(self, exp_id, command, dependencies, args, setup_commands=None):
+    def __init__(self, exp_id, command, args, dependencies, setup_commands=None):
         """
         Initialize an experiment.
 
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param args: a list of dictionaries; each dictionary defines a new task
+        :param dependencies: a list of files required to run the tool, relative to experiment folder (e.g. 'cnfxor.py')
         :param setup_commands: The setup to perform on each worker node before beginning tasks
         """
         super().__init__(command, args)
@@ -91,7 +92,7 @@ class SlurmExperiment(Experiment):
         pass
 
     def __str__(self):
-        return self.id
+        return self.id.replace('\\','/').split('/')[-1]
 
 
 class SlurmInstance(ExperimentInstance):
@@ -160,7 +161,7 @@ class SlurmInstance(ExperimentInstance):
 
         :param num_workers: The number of workers to use for this experiment.
         :param time: The timeout to use for this experiment.
-        :param kwargs: Passed to the_setup_all function.
+        :param kwargs: Passed to the setup_all function.
         :return: None
         """
         if num_workers < 0:
