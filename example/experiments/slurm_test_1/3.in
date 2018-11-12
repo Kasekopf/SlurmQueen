@@ -1,0 +1,2 @@
+echo "{\"\": [\"BA\"], \"a\": 1, \"b\": 0, \"|desc\": \"1 + 0\", \"output\": \"$(dirname $0)/3.out\"}" > $(dirname $0)/3.out
+python example_tool.py "BA" --a="1" --b="0" --output="$(dirname $0)/3.out" &> $(dirname $0)/3.log

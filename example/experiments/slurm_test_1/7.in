@@ -1,0 +1,2 @@
+echo "{\"\": [\"CB\"], \"a\": 2, \"b\": 1, \"|desc\": \"2 + 1\", \"output\": \"$(dirname $0)/7.out\"}" > $(dirname $0)/7.out
+python example_tool.py "CB" --a="2" --b="1" --output="$(dirname $0)/7.out" &> $(dirname $0)/7.log
