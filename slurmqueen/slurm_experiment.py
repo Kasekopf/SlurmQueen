@@ -373,7 +373,6 @@ class SlurmInstance(ExperimentInstance):
 
         # Craft the job script for the experiment
         script_builder = base_script()
-        script_builder.set("PROJECT", self.remote_experiment_path(""))
         script_builder.set("FULL_NAME", str(self))
         script_builder.set("TIME", time)
         script_builder.set("PARTITION", partition)
