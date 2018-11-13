@@ -4,8 +4,6 @@
 #SBATCH --partition=commons
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4000m
-
 module load Anaconda3/5.0.0
 
 cd /scratch/jmd11/experiments/slurmqueen/experiments/slurm_test_1/
