@@ -285,23 +285,26 @@ class SlurmInstance(ExperimentInstance):
             raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         with self._config.server.ftp_connect() as ftp:
-            def gather_files(zip_name, pattern):
+            def gather_files(zip_name, pattern, display_name):
                 # Compress the zip file remotely
                 self._config.server.execute('zip -j %s $(ls %s | grep -E "%s")'
                                             % (self.remote_experiment_path(zip_name),
                                                self.remote_experiment_path('*'),
                                                pattern))
 
-                # Copy the zip file
-                ftp.get(self.remote_experiment_path(zip_name), self.local_experiment_path(zip_name))
+                try:
+                    # Copy the zip file
+                    ftp.get(self.remote_experiment_path(zip_name), self.local_experiment_path(zip_name))
 
-                # Decompress the zip file locally
-                with zipfile.ZipFile(self.local_experiment_path(zip_name)) as zip_file:
-                    zip_file.extractall(path=self.local_experiment_path())
+                    # Decompress the zip file locally
+                    with zipfile.ZipFile(self.local_experiment_path(zip_name)) as zip_file:
+                        zip_file.extractall(path=self.local_experiment_path())
+                except FileNotFoundError:
+                    print('Unable to find %s files' % display_name)
 
             print('Experiment complete. Compressing and copying results.')
-            gather_files('_outputs.zip', '.*/[0-9]+\.(out|log)')
-            gather_files('_worker_logs.zip', '.*\.worker')
+            gather_files('_outputs.zip', '.*/[0-9]+\.(out|log)', '.out')
+            gather_files('_worker_logs.zip', '.*\.worker', '.worker')
 
     def _cleanup(self):
         """
@@ -410,8 +413,9 @@ class SlurmInstance(ExperimentInstance):
         self._exp.prepare_server(self)
 
         # Generate a command to complete submission
-        return 'sbatch --output={0} --array=0-{1} {2} {3}'.format(
+        return 'sbatch --output="{0}" --workdir="{1}" --array=0-{2} {3} {4}'.format(
             self.remote_experiment_path('slurm_%a.worker'),
+            self.remote_experiment_path(''),
             str(num_workers - 1),
             self.remote_experiment_path(job_file), str(num_workers))
 

@@ -44,7 +44,6 @@ def base_script():
 #SBATCH --cpus-per-task=[$$CPUS]
 [$$SETUP]
 
-cd $(dirname $0)
 for file in `find *.in | awk "(NR - 1) % $1 == $SLURM_ARRAY_TASK_ID"`; do
   ./$file
 done
