@@ -1,5 +1,4 @@
 import io
-import ipywidgets.widgets
 import os
 import re
 import zipfile
@@ -208,11 +207,15 @@ class SlurmInstance(ExperimentInstance):
         """
         Build a iPython GUI for running and completing this experiment. All arguments are passed unchanged to "run".
 
+        Requires the ipywidgets package.
+
         :param num_workers: The number of workers to use for this experiment.
         :param time: The timeout to use for this experiment.
         :param kwargs: Passed to the _setup_all function.
         :return: A GUI to manipulate this job.
         """
+
+        import ipywidgets.widgets
         run_button = ipywidgets.widgets.Button(description='Run', button_style='Danger')
         complete_button = ipywidgets.widgets.Button(description='Complete', button_style='info')
         refresh_button = ipywidgets.widgets.Button(description='Refresh', icon='check')
