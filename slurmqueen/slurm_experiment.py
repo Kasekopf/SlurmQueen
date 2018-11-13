@@ -3,7 +3,7 @@ import os
 import re
 import zipfile
 
-from slurm_script import base_script, continuation_script
+from slurm_script import base_script
 from experiment import Experiment, ExperimentInstance
 
 
@@ -418,67 +418,3 @@ class SlurmInstance(ExperimentInstance):
 
     def __str__(self):
         return self._exp.__str__()
-
-
-def run_chain(experiments, config, time, num_workers=498, partition='commons', **kwargs):
-    """
-    Run the set of experiment as a chain. That is, each experiment will run in order, with each experiment beginning
-    when all jobs started by the previous experiment have completed.
-
-    :param experiments: A list of experiments to run.
-    :param config: The runtime server configuration.
-    :param time: The timeout to use to run each experiment.
-    :param num_workers: The number of workers to use for each experiment (maximum 498).
-    :param partition: The SLURM server partition to use.
-    :param kwargs: Passed to the _setup_all function.
-    :return: None
-    """
-    if num_workers > 498:
-        raise RuntimeError('At most 498 workers can be used')
-    if len(experiments) == 0:
-        raise RuntimeError('No experiments provided')
-    if len(experiments) == 1:
-        print('Only one experiment specified; chain is not needed')
-        experiments[0].slurm_instance(config).run(num_workers, time, partition=partition, **kwargs)
-        return
-
-    chain_file = '_start.sh'
-
-    for exp, next_exp in zip(experiments, experiments[1:] + [None]):
-        print('Initializing', exp)
-
-        exp = exp.slurm_instance(config)
-        start = exp.setup(num_workers, time, partition=partition, **kwargs)
-
-        # Craft the continuation script to begin the next round
-        script_builder = continuation_script()
-        script_builder.set("START_JOB", start)
-        script_builder.set("PARTITION", partition)
-        script_builder.set("FULL_NAME", str(exp))
-
-        if next_exp is None:
-            script_builder.set("START_NEXT_LINK", "# No further link to run")
-        else:
-            next_link_command = 'sbatch'
-            next_link_command += ' --output=' + next_exp.remote_experiment_path(config, 'slurm-starter.out')
-            next_link_command += ' --dependency afterany:$jobid'
-            if exp != experiments[0]:
-                next_link_command += ':$SLURM_JOB_ID'  # Also wait for the current monitor job to finish
-
-                next_link_command += ' ' + next_exp.remote_experiment_path(chain_file)
-
-            script_builder.set("START_NEXT_LINK", next_link_command)
-
-        with io.open(exp.local_experiment_path(chain_file), 'w', newline='\n') as f:
-            f.write(script_builder.build())
-
-    print('Copying continuation files to remote server')
-    ftp = config.server.open_sftp()
-    for exp in experiments:
-        ftp.put(exp.local_experiment_path(chain_file), exp.remote_experiment_path(chain_file))
-        # Prepare the chain script for execution
-        config.server.execute('chmod +x ' + exp.remote_experiment_path(chain_file))
-    ftp.close()
-
-    print('Starting first link')
-    config.server.execute(experiments[0].remote_experiment_path(chain_file))

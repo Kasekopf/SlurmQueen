@@ -42,8 +42,6 @@ def base_script():
 #SBATCH --partition=[$$PARTITION]
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=[$$CPUS]
-#SBATCH --mem-per-cpu=4000m
-
 [$$SETUP]
 
 cd [$$PROJECT]
@@ -51,23 +49,3 @@ for file in `find *.in | awk "(NR - 1) % $1 == $SLURM_ARRAY_TASK_ID"`; do
   ./$file
 done
 """)
-
-def continuation_script():
-    """
-    Get the base script to run a sequence of experiments.
-
-    :return: An unbuilt script to run a sequence of experiments.
-    """
-    return ScriptBuilder("""#!/bin/bash
-#SBATCH --time=00:10:00
-#SBATCH --job-name=[$$FULL_NAME]_starter
-#SBATCH --partition=[$$PARTITION]
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --mem-per-cpu=4000m
-
-jobid=$([$$START_JOB])
-jobid=${jobid:20}
-echo "Submitted primary job: $jobid"
-[$$START_NEXT_LINK]
-    """)
