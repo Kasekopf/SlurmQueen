@@ -8,11 +8,18 @@ In particular, this harness allows you to:
 
 See [this jupyter notebook](example/example_experimental_setup.ipynb) for detailed usage.
 
-## Required libraries:
+# Installation
+For most users, the recommended method to install is via pip:
+
+```
+pip install slurmqueen
+```
+
+## Dependencies:
 * paramiko
 * pandas
-* ipywidgets
-* click (to run the example)
-* notebook (to run the example)
+* ipywidgets (optional)
+* click (required on the Slurm cluster to run the example)
+* notebook (required to run the example notebook)
 
 See [requirements.txt](requirements.txt) for detailed version information, if needed.
