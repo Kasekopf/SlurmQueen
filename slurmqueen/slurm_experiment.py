@@ -411,7 +411,7 @@ class SlurmInstance(ExperimentInstance):
 
         # Generate a command to complete submission
         return 'sbatch --output={0} --array=0-{1} {2} {3}'.format(
-            self.remote_experiment_path('slurm-%A_%a.worker'),
+            self.remote_experiment_path('slurm_%a.worker'),
             str(num_workers - 1),
             self.remote_experiment_path(job_file), str(num_workers))
 
