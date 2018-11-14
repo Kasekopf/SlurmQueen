@@ -1,6 +1,5 @@
 import ast
 import io
-import json
 import os
 import pandas as pd
 import pandas.io.sql
@@ -81,7 +80,7 @@ class ExperimentInstance:
             input_file = io.open(self.local_experiment_path(number + '.in'), 'w', newline='\n')
 
             # Write the arguments as the first line of the output file
-            input_file.write('echo "' + json.dumps(args).replace('"', '\\"') + '" > ' + args['output'])
+            input_file.write('echo "' + repr(args).replace('"', '\\"') + '" > ' + args['output'])
             input_file.write('\n')
 
             input_file.write(self._exp.command)
@@ -181,7 +180,7 @@ class ExperimentInstance:
 
                         try:
                             datum[key_value_pair[0].strip()] = ast.literal_eval(key_value_pair[1].strip())
-                        except ValueError:  # Treat as string value
+                        except (ValueError, SyntaxError):  # Treat as string value
                             datum[key_value_pair[0].strip()] = key_value_pair[1].strip()
 
                     data.append(datum)
