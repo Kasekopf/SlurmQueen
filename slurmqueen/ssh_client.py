@@ -1,4 +1,4 @@
-import interactive
+import slurmqueen.interactive
 import paramiko
 from socket import gaierror
 import logging

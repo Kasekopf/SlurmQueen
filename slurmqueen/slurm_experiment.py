@@ -3,8 +3,8 @@ import os
 import re
 import zipfile
 
-from slurm_script import base_script
-from experiment import Experiment, ExperimentInstance
+from slurmqueen.slurm_script import base_script
+from slurmqueen.experiment import Experiment, ExperimentInstance
 
 
 class ExperimentConfig:

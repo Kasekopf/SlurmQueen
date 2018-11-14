@@ -1,4 +1,4 @@
-from ssh_client import SSHServer
+from slurmqueen.ssh_client import SSHServer
 
 
 class SlurmServer(SSHServer):

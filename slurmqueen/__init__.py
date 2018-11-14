@@ -1,3 +1,3 @@
-from dashboard import SlurmServer
-from experiment import Experiment
-from slurm_experiment import SlurmExperiment, ExperimentConfig
+from slurmqueen.dashboard import SlurmServer
+from slurmqueen.experiment import Experiment
+from slurmqueen.slurm_experiment import SlurmExperiment, ExperimentConfig
