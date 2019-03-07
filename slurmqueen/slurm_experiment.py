@@ -169,7 +169,7 @@ class SlurmInstance(ExperimentInstance):
 
         command = self._setup_all(num_workers, time, **kwargs)
         print('Attempting to submit job')
-        print(self._config.server.execute(command))
+        print(self._config.server.execute(command, timeout=1000))
 
     def complete(self):
         """
@@ -290,7 +290,7 @@ class SlurmInstance(ExperimentInstance):
                 self._config.server.execute('zip -j %s $(ls %s | grep -E "%s")'
                                             % (self.remote_experiment_path(zip_name),
                                                self.remote_experiment_path('*'),
-                                               pattern))
+                                               pattern), timeout=1000)
 
                 try:
                     # Copy the zip file
@@ -404,7 +404,7 @@ class SlurmInstance(ExperimentInstance):
 
         # Decompress input files on remote server
         self._config.server.execute('unzip ' + self.remote_experiment_path(input_zip)
-                                    + ' -d ' + self.remote_experiment_path())
+                                    + ' -d ' + self.remote_experiment_path(), timeout=1000)
 
         # Prepare the job script (and input files) for execution
         for file in input_files:
