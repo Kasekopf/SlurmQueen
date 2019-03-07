@@ -171,15 +171,16 @@ class SlurmInstance(ExperimentInstance):
         print('Attempting to submit job')
         print(self._config.server.execute(command, timeout=1000))
 
-    def complete(self):
+    def complete(self, force=False):
         """
-        Download the results of this experiment back to the local machine. This can only run successfully when all
-        SLURM jobs started by the experiment have completed.
+        Download the results of this experiment back to the local machine. Raises a RuntimeError
+        unless all SLURM jobs started by the experiment have completed (set [force] to True to
+        override this check).
 
         :return: None
         """
-        self._gather()
-        self._cleanup()
+        self._gather(force=force)
+        self._cleanup(force=force)
 
     def finished(self, verbose=False):
         """
@@ -273,16 +274,20 @@ class SlurmInstance(ExperimentInstance):
 
         return ipywidgets.widgets.HBox([run_button, complete_button, refresh_button, status_label])
 
-    def _gather(self):
+    def _gather(self, force=False):
         """
-        Download the results of the job from the server to the local machine.
+        Download the results of the job from the server to the local machine. Raises a RuntimeError
+        if the job is currently running, unless [force] is True.
+
+        :param force: If true, download all current remote data regardless of job status.
 
         :return: None
         """
         # Ensure this experiment has finished
-        last = self.job()
-        if last and not last.finished(cache=True):
-            raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
+        if not force:
+            last = self.job()
+            if last and not last.finished(cache=True):
+                raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         with self._config.server.ftp_connect() as ftp:
             def gather_files(zip_name, pattern, display_name):
@@ -306,16 +311,20 @@ class SlurmInstance(ExperimentInstance):
             gather_files('_outputs.zip', '.*/[0-9]+\.(out|log)', '.out')
             gather_files('_worker_logs.zip', '.*\.worker', '.worker')
 
-    def _cleanup(self):
+    def _cleanup(self, force=False):
         """
-        Delete all information for this experiment on the cluster.
+        Delete all information for this experiment on the cluster. Raises a RuntimeError if
+        the job is currently running, unless [force] is True.
+
+        :param force: If true, delete all current remote data regardless of job status.
 
         :return: None
         """
         # Ensure this experiment has finished
-        last = self.job()
-        if last and not last.finished(cache=True):
-            raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
+        if not force:
+            last = self.job()
+            if last and not last.finished(cache=True):
+                raise RuntimeError('Experiment is currently running under JobID ' + str(last.jobid))
 
         # Delete all files from experiment server
         print('Deleting files from remote server:', self.remote_experiment_path())
