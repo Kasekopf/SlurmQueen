@@ -1,4 +1,3 @@
-import slurmqueen.interactive
 import paramiko
 from socket import gaierror
 import logging
@@ -65,19 +64,6 @@ class SSHServer:
         """
         transport = self._client.get_transport() if self._client else None
         return transport and transport.is_active()
-
-    def shell(self):
-        """
-        Open an interactive shell to this server. Throws an exception if the connection fails.
-
-        :return: An interactive shell to this server.
-        """
-        channel = self.connection().invoke_shell()
-        try:
-            slurmqueen.interactive.interactive_shell(channel)
-        except KeyboardInterrupt:
-            print('TERMINATED')
-        channel.close()
 
     def execute(self, command, other_input=None, timeout=10):
         """
