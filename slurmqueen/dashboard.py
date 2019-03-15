@@ -54,7 +54,6 @@ class SlurmServer(SSHServer):
 
         :param job_id: If provided, load all jobs whose job id matches this.
         :param other_username: If provided, load all jobs belonging to this user.
-        :param job_name: If provided, filter only jobs whose name contains this (regex) as a substring.
         :return: A list of jobs, grouped by batch.
         """
         command = 'sacct --format="jobid%20,jobname%50,partition,user,state,totalcpu,time,node"'
@@ -116,7 +115,7 @@ class JobData:
                 self.nodes = value
             if column == 'NODELIST(REASON)' or column == 'NODELIST':
                 self.nodelist = value
-            
+
             self.properties[column] = value
 
     def __str__(self):

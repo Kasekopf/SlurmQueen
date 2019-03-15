@@ -102,7 +102,7 @@ class SlurmExperiment(Experiment):
         pass
 
     def __str__(self):
-        return self.id.replace('\\','/').split('/')[-1]
+        return self.id.replace('\\', '/').split('/')[-1]
 
 
 class SlurmInstance(ExperimentInstance):

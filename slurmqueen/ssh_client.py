@@ -74,7 +74,7 @@ class SSHServer:
         """
         channel = self.connection().invoke_shell()
         try:
-            interactive.interactive_shell(channel)
+            slurmqueen.interactive.interactive_shell(channel)
         except KeyboardInterrupt:
             print('TERMINATED')
         channel.close()
