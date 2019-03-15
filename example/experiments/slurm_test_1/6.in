@@ -1,2 +1,2 @@
-echo "{\"\": [\"CA\"], \"a\": 2, \"b\": 0, \"|desc\": \"2 + 0\", \"output\": \"$(dirname $0)/6.out\"}" > $(dirname $0)/6.out
+echo "{'': ['CA'], 'a': 2, 'b': 0, '|desc': '2 + 0', 'output': '$(dirname $0)/6.out'}" > $(dirname $0)/6.out
 python example_tool.py "CA" --a="2" --b="0" --output="$(dirname $0)/6.out" &> $(dirname $0)/6.log

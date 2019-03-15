@@ -9,18 +9,29 @@ from slurmqueen.experiment import Experiment, ExperimentInstance
 
 class ExperimentConfig:
     """
-    A class to store configuration information: the SLURM server, the directory on the local machine for
-    experimental results, and the directory on the SLURM machine to use for experimental computations.
+    A class to store configuration information. Note that the provided directories will be created
+    when a job is started if they do not currently exist.
+
+    :param server: the SLURM server.
+    :param partition: the partition to use on the SLURM server.
+    :param local_directory: a directory on the local machine to use for experimental results
+    :param remote_directory: a directory on the SLURM machine to use for experimental computations
+                             (typically in a scratch filesystem, if possible).
     """
 
-    def __init__(self, server, local_directory, remote_directory):
+    def __init__(self, server, partition, local_directory, remote_directory):
         self.__server = server
+        self.__partition = partition
         self.__local_directory = local_directory
         self.__remote_directory = remote_directory
 
     @property
     def server(self):
         return self.__server
+
+    @property
+    def partition(self):
+        return self.__partition
 
     @property
     def local_directory(self):
@@ -60,7 +71,7 @@ class SlurmExperiment(Experiment):
         """
         return SlurmInstance(self, config)
 
-    def partition(self, max_size=498):
+    def partition_tasks(self, max_size=498):
         """
         Divide the tasks of this experiment into many experiments. This can be used to work around the max job size on
         SLURM servers.
@@ -348,7 +359,7 @@ class SlurmInstance(ExperimentInstance):
 
                 ftp.put(self.local_project_path(filename), self.remote_experiment_path(filename))
 
-    def _setup_all(self, num_workers, time, cpus_per_worker=1, partition='commons'):
+    def _setup_all(self, num_workers, time, cpus_per_worker=1):
         """
         Copy all experiment files from the local machine to the remote server. Prepare scripts to initiate the
         experiment.
@@ -356,7 +367,6 @@ class SlurmInstance(ExperimentInstance):
         :param num_workers: The number of workers to use for each experiment (maximum 498).
         :param time: The timeout to use for each worker.
         :param cpus_per_worker: The number of CPUs to provide for each worker.
-        :param partition: The SLURM server partition to use.
         :return: A command to be run on the SLURM server to run the experiment.
         """
 
@@ -387,7 +397,7 @@ class SlurmInstance(ExperimentInstance):
         script_builder = base_script()
         script_builder.set("FULL_NAME", str(self))
         script_builder.set("TIME", time)
-        script_builder.set("PARTITION", partition)
+        script_builder.set("PARTITION", self._config.partition)
         script_builder.set("CPUS", str(cpus_per_worker))
         script_builder.set("NUM_WORKERS", str(num_workers))
         script_builder.set("SETUP", self._exp.setup_commands)

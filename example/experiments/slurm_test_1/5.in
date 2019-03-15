@@ -1,2 +1,2 @@
-echo "{\"\": [\"BC\"], \"a\": 1, \"b\": 2, \"|desc\": \"1 + 2\", \"output\": \"$(dirname $0)/5.out\"}" > $(dirname $0)/5.out
+echo "{'': ['BC'], 'a': 1, 'b': 2, '|desc': '1 + 2', 'output': '$(dirname $0)/5.out'}" > $(dirname $0)/5.out
 python example_tool.py "BC" --a="1" --b="2" --output="$(dirname $0)/5.out" &> $(dirname $0)/5.log

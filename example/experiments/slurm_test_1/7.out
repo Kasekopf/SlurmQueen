@@ -1,3 +1,3 @@
-{"": ["CB"], "a": 2, "b": 1, "|desc": "2 + 1", "output": "./7.out"}
+{'': ['CB'], 'a': 2, 'b': 1, '|desc': '2 + 1', 'output': './7.out'}
 Sum: 3
 Repeated Text: CBCBCB
