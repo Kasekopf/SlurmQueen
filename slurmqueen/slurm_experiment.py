@@ -184,6 +184,7 @@ class SlurmInstance(ExperimentInstance):
         unless all SLURM jobs started by the experiment have completed (set [force] to True to
         override this check).
 
+        :param force: If true, download all current remote data regardless of job status.
         :return: None
         """
         self._gather(force=force)
