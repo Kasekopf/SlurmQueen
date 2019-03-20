@@ -174,10 +174,6 @@ class SlurmInstance(ExperimentInstance):
         :param kwargs: Passed to the setup_all function.
         :return: None
         """
-        if num_workers < 0:
-            num_workers = len(self)
-            print('Running across ' + str(num_workers) + ' nodes')
-
         command = self._setup_all(num_workers, time, **kwargs)
         print('Attempting to submit job')
         print(self._config.server.execute(command, timeout=1000))
@@ -384,6 +380,11 @@ class SlurmInstance(ExperimentInstance):
                 raise RuntimeError('Remove files in '
                                    + self.remote_experiment_path()
                                    + ' or change the experiment id')
+
+        # Compute the number of workers to use, if unspecified
+        if num_workers < 0:
+            num_workers = len(self)
+            print('Running across ' + str(num_workers) + ' nodes')
 
         # Create local files
         self.setup()
