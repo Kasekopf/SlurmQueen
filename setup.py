@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="slurmqueen",
-    version="1.2.1",
+    version="1.2.2",
     author="Jeffrey Dudek",
     author_email="jeffreydudek@gmail.com",
     description="A Python 3 library for automatically running experiments using a Slurm cluster",

@@ -424,12 +424,11 @@ class SlurmInstance(ExperimentInstance):
         print('Copied files to remote server')
 
         # Decompress input files on remote server
-        self._config.server.execute('unzip ' + self.remote_experiment_path(input_zip)
+        self._config.server.execute('unzip -q ' + self.remote_experiment_path(input_zip)
                                     + ' -d ' + self.remote_experiment_path(), timeout=1000)
 
         # Prepare the job script (and input files) for execution
-        for file in input_files:
-            self._config.server.execute('chmod +x ' + self.remote_experiment_path(file))
+        self._config.server.execute('chmod +x ' + self.remote_experiment_path('*.in'))
 
         self._exp.prepare_server(self)
 
