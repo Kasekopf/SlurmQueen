@@ -1,11 +1,11 @@
 import setuptools
 
 with open("README.md", "r") as fh:
-    long_description = fh.read()
+    long_description = fh.read().replace('](', '](https://github.com/Kasekopf/SlurmQueen/blob/master/')
 
 setuptools.setup(
     name="slurmqueen",
-    version="1.2.2",
+    version="1.3.0",
     author="Jeffrey Dudek",
     author_email="jeffreydudek@gmail.com",
     description="A Python 3 library for automatically running experiments using a Slurm cluster",
