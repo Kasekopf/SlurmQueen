@@ -75,12 +75,10 @@ class ExperimentInstance:
 
             number = str(count).zfill(len(str(len(self._exp.args))))  # Prepend with padded zeros
 
-            args['output'] = '$(dirname $0)/' + number + '.out'
-
             input_file = io.open(self.local_experiment_path(number + '.in'), 'w', newline='\n')
 
             # Write the arguments as the first line of the output file
-            input_file.write('echo "' + repr(args).replace('"', '\\"') + '" > ' + args['output'])
+            input_file.write('echo "%s" > $(dirname $0)/%s.out' % (repr(args).replace('"', '\\"'), number))
             input_file.write('\n')
 
             input_file.write(self._exp.command)
@@ -89,13 +87,16 @@ class ExperimentInstance:
                 for positional_arg in args['']:
                     input_file.write(' "' + str(positional_arg) + '"')
             for arg_key in args:
-                if arg_key == '':  # named argument
+                if arg_key == '' or arg_key == '<':  # named argument
                     continue
                 if '|' in arg_key:  # private argument
                     continue
 
-                input_file.write(' --' + str(arg_key) + '="' + str(args[arg_key]) + '"')
-            input_file.write(' &> ' + '$(dirname $0)/' + number + '.log')
+                input_file.write(' --%s=%s' % (str(arg_key), str(args[arg_key])))
+            if '<' in args:
+                input_file.write(' < %s' % str(args['<']))
+            input_file.write(' >> $(dirname $0)/%s.out' % number)
+            input_file.write(' 2> $(dirname $0)/%s.log' % number)
             input_file.write('\n')
             input_file.close()
 
