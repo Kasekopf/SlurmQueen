@@ -26,7 +26,7 @@ class ScriptBuilder:
         """
         result = self._script
         for key, value in self._settings.items():
-            result = result.replace('[$$' + key + ']', value)
+            result = result.replace("[$$" + key + "]", value)
         return result
 
 
@@ -36,7 +36,8 @@ def base_script():
 
     :return: An unbuilt script to run a single experiment.
     """
-    return ScriptBuilder("""#!/bin/bash
+    return ScriptBuilder(
+        """#!/bin/bash
 #SBATCH --time=[$$TIME]
 #SBATCH --job-name=[$$FULL_NAME]
 #SBATCH --partition=[$$PARTITION]
@@ -47,4 +48,5 @@ def base_script():
 for file in `find *.in | awk "(NR - 1) % $1 == $SLURM_ARRAY_TASK_ID"`; do
   ./$file
 done
-""")
+"""
+    )

@@ -29,19 +29,19 @@ class SlurmServer(SSHServer):
         """
         command = 'squeue --format="%.20i %.9P %j %.8u %.8T %.10M %.9l %.6D %R"'
         if job_id:
-            command += ' -j ' + str(job_id)
+            command += " -j " + str(job_id)
         elif other_username:
-            command += ' -u ' + other_username
+            command += " -u " + other_username
         else:
-            command += ' -u ' + self.username
+            command += " -u " + self.username
 
-        raw_jobs = self.execute(command).split('\n')
-        raw_jobs = list(filter(lambda j: j != '', raw_jobs))
+        raw_jobs = self.execute(command).split("\n")
+        raw_jobs = list(filter(lambda j: j != "", raw_jobs))
 
         if len(raw_jobs) < 1:
             return []
         res = [JobData(raw_jobs[0], i) for i in raw_jobs[1:]]
-        res = filter(lambda j: j.name != 'batch', res)
+        res = filter(lambda j: j.name != "batch", res)
 
         return BatchJob.collect(self, res)
 
@@ -58,20 +58,20 @@ class SlurmServer(SSHServer):
         """
         command = 'sacct --format="jobid%20,jobname%50,partition,user,state,totalcpu,time,node"'
         if job_id:
-            command += ' -j ' + str(job_id)
+            command += " -j " + str(job_id)
         elif other_username:
-            command += ' -u ' + other_username
+            command += " -u " + other_username
         else:
-            command += ' -u ' + self.username
+            command += " -u " + self.username
 
-        raw_jobs = self.execute(command).split('\n')
-        raw_jobs = list(filter(lambda j: j != '', raw_jobs))
+        raw_jobs = self.execute(command).split("\n")
+        raw_jobs = list(filter(lambda j: j != "", raw_jobs))
 
         if len(raw_jobs) < 2:
             return []
 
         res = [JobData(raw_jobs[0], i) for i in raw_jobs[2:]]
-        res = filter(lambda j: j.name != 'batch', res)
+        res = filter(lambda j: j.name != "batch", res)
         return BatchJob.collect(self, res)
 
     def job(self, job_id):
@@ -85,35 +85,35 @@ class SlurmServer(SSHServer):
         if not res:
             return None
         if len(res) > 1:
-            print('Identified ' + str(len(res)) + ' jobs; returning most recent job')
+            print("Identified " + str(len(res)) + " jobs; returning most recent job")
         return res[-1]
 
 
 class JobData:
     def __init__(self, header, info):
-        words = filter(lambda w: len(w) > 0, info.split(' '))
+        words = filter(lambda w: len(w) > 0, info.split(" "))
 
-        header_words = filter(lambda w: len(w) > 0, header.upper().split(' '))
+        header_words = filter(lambda w: len(w) > 0, header.upper().split(" "))
 
         self.properties = {}
         for column, value in zip(header_words, words):
-            if column == 'JOBID':
+            if column == "JOBID":
                 self.jobid = value
-            if column == 'PARTITION':
+            if column == "PARTITION":
                 self.partition = value
-            if column == 'NAME' or column == 'JOBNAME':
+            if column == "NAME" or column == "JOBNAME":
                 self.name = value
-            if column == 'USER':
+            if column == "USER":
                 self.user = value
-            if column == 'STATE':
+            if column == "STATE":
                 self.state = value
-            if column == 'TIME' or column == 'TOTALCPU':
+            if column == "TIME" or column == "TOTALCPU":
                 self.time = value
-            if column == 'TIME_LIMIT' or column == 'TIMELIMIT':
+            if column == "TIME_LIMIT" or column == "TIMELIMIT":
                 self.time_limit = value
-            if column == 'NODES':
+            if column == "NODES":
                 self.nodes = value
-            if column == 'NODELIST(REASON)' or column == 'NODELIST':
+            if column == "NODELIST(REASON)" or column == "NODELIST":
                 self.nodelist = value
 
             self.properties[column] = value
@@ -125,10 +125,10 @@ class JobData:
 class BatchJob:
     def __init__(self, server, jobs):
         def extract_id(job):
-            return job.jobid.split('_')[0]
+            return job.jobid.split("_")[0]
 
         if not jobs:
-            raise ValueError('No jobs provided to JobBatch')
+            raise ValueError("No jobs provided to JobBatch")
 
         rep = jobs[0]
         self.server = server
@@ -139,10 +139,10 @@ class BatchJob:
 
         highest_val = 0
         for j in jobs:
-            if '_' in j.jobid:
-                if '-' in j.jobid:
+            if "_" in j.jobid:
+                if "-" in j.jobid:
                     # JobID has the form 000000_[0-##]
-                    top = j.jobid.split('-')[1][:-1]
+                    top = j.jobid.split("-")[1][:-1]
 
                     """
                     # I think this was actually because jobid did not have enough chars...
@@ -151,19 +151,24 @@ class BatchJob:
                         top = j.jobid.split('[')[1].split('-')[0]
                     """
                     top = int(top)
-                elif '[' in j.jobid:
+                elif "[" in j.jobid:
                     # JobID has the form 000000_[###]
-                    top = int(j.jobid.split('[')[1][:-1])
+                    top = int(j.jobid.split("[")[1][:-1])
                 else:
                     # JobID has the form 000000_###
-                    top = int(j.jobid.split('_')[1])
+                    top = int(j.jobid.split("_")[1])
                 highest_val = max(highest_val, top)
         self.count = highest_val + 1
 
         # Ensure the batch of jobs consists of a single job
         for j in jobs:
             if extract_id(j) != self.jobid:
-                raise ValueError('JobBatch created with id ' + self.jobid + ' but contains ' + extract_id(j))
+                raise ValueError(
+                    "JobBatch created with id "
+                    + self.jobid
+                    + " but contains "
+                    + extract_id(j)
+                )
 
     def refresh(self):
         new_batch = self.server.job(self.jobid)
@@ -172,14 +177,21 @@ class BatchJob:
     def finished(self, cache=False):
         status = self.status(cache)
 
-        ongoing = ['PENDING', 'CONFIGURING', 'COMPLETING', 'PENDING', 'RUNNING', 'PREEMPTED']
+        ongoing = [
+            "PENDING",
+            "CONFIGURING",
+            "COMPLETING",
+            "PENDING",
+            "RUNNING",
+            "PREEMPTED",
+        ]
         for state in ongoing:
             if state in status:
                 return False
         return True
 
     def cancel(self):
-        self.server.execute('scancel ' + str(self.jobid))
+        self.server.execute("scancel " + str(self.jobid))
 
     def status(self, cache=False):
         if not cache:
@@ -187,12 +199,14 @@ class BatchJob:
 
         res = {}
         for j in self.jobs:
-            if '-' in j.jobid:
+            if "-" in j.jobid:
                 # JobID has the form 000000_[##-##]
-                bot = j.jobid.split('[')[1].split('-')[0]
-                top = j.jobid.split('-')[1][:-1]
+                bot = j.jobid.split("[")[1].split("-")[0]
+                top = j.jobid.split("-")[1][:-1]
 
-                count = int(top) - int(bot) + 1  # Both boundaries are inclusive on SLURM
+                count = (
+                    int(top) - int(bot) + 1
+                )  # Both boundaries are inclusive on SLURM
             else:
                 # JobID represents a single job
                 count = 1
@@ -203,16 +217,26 @@ class BatchJob:
         return res
 
     def __str__(self):
-        return "[" + self.jobid + "_[0-" + str(self.count - 1) + "]:" + self.name + ":" + self.user + "]"
+        return (
+            "["
+            + self.jobid
+            + "_[0-"
+            + str(self.count - 1)
+            + "]:"
+            + self.name
+            + ":"
+            + self.user
+            + "]"
+        )
 
     @staticmethod
     def collect(server, jobs):
         jobs_by_id = {}
         for j in jobs:
-            if '.ba+' in j.jobid:
+            if ".ba+" in j.jobid:
                 continue
 
-            job_id = j.jobid.split('_')[0]
+            job_id = j.jobid.split("_")[0]
             if job_id in jobs_by_id:
                 jobs_by_id[job_id].append(j)
             else:

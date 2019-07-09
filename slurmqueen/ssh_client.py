@@ -43,9 +43,9 @@ class SSHServer:
                 self._client.connect(self._server, username=self._username, pkey=key)
             except gaierror:
                 self._client = None
-                raise Exception('Unable to connect to server ' + self._server)
+                raise Exception("Unable to connect to server " + self._server)
 
-            print('Connected to ' + self._server)
+            print("Connected to " + self._server)
         return self._client
 
     def ftp_connect(self):
@@ -80,7 +80,7 @@ class SSHServer:
             stdin.write(other_input)
             stdin.flush()
 
-        return stdout.read().decode('utf8')
+        return stdout.read().decode("utf8")
 
     def __str__(self):
         return self._username + "@" + self._server
