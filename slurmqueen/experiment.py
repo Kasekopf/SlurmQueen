@@ -101,11 +101,11 @@ class ExperimentInstance:
                 if '|' in arg_key:  # private argument
                     continue
 
-                input_file.write(' --%s=%s' % (str(arg_key), str(args[arg_key])))
+                input_file.write(' --%s="%s"' % (str(arg_key), str(args[arg_key])))
 
             for arg_key in args:
                 if '<' in arg_key or '>' in arg_key:  # stream redirection
-                    input_file.write(' %s %s' % (str(arg_key), str(args[arg_key])))
+                    input_file.write(' %s "%s"' % (str(arg_key), str(args[arg_key])))
             input_file.write('\n')
             input_file.close()
 
