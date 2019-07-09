@@ -43,7 +43,7 @@ class ExperimentConfig:
 
 
 class SlurmExperiment(Experiment):
-    def __init__(self, exp_id, command, args, dependencies, setup_commands=None):
+    def __init__(self, exp_id, command, args, dependencies, setup_commands=None, output_argument='>>', log_argument='2>'):
         """
         Initialize an experiment.
 
@@ -52,8 +52,10 @@ class SlurmExperiment(Experiment):
         :param args: a list of dictionaries; each dictionary defines a new task
         :param dependencies: a list of files required to run the tool, relative to experiment folder (e.g. 'cnfxor.py')
         :param setup_commands: The setup to perform on each worker node before beginning tasks
+        :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
+        :param log_argument: the argument used to pass the name of the .log file (defaults to stderr)
         """
-        super().__init__(command, args)
+        super().__init__(command, args, output_argument, log_argument)
 
         self.id = exp_id
         self.dependencies = dependencies

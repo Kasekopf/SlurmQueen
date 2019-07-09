@@ -7,7 +7,7 @@ import sqlite3
 
 
 class Experiment:
-    def __init__(self, command, args):
+    def __init__(self, command, args, output_argument='>>', log_argument='2>'):
         """
         Initialize an experiment, defined by running the command with parameters given by each dictionary in args.
 
@@ -17,9 +17,13 @@ class Experiment:
 
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param args: a list of dictionaries; each dictionary defines a new task.
+        :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
+        :param log_argument: the argument used to pass the name of the .log file (defaults to stderr)
         """
         self.command = command
         self.args = args
+        self.output_argument = output_argument
+        self.log_argument = log_argument
 
     def instance(self, local_directory):
         """
@@ -83,20 +87,25 @@ class ExperimentInstance:
 
             input_file.write(self._exp.command)
 
+            args[self._exp.output_argument] = '$(dirname $0)/%s.out' % number
+            args[self._exp.log_argument] = '$(dirname $0)/%s.log' % number
+
             if '' in args:
                 for positional_arg in args['']:
                     input_file.write(' "' + str(positional_arg) + '"')
             for arg_key in args:
-                if arg_key == '' or arg_key == '<':  # named argument
+                if arg_key == '':  # named argument
+                    continue
+                if '<' in arg_key or '>' in arg_key:  # stream redirection
                     continue
                 if '|' in arg_key:  # private argument
                     continue
 
                 input_file.write(' --%s=%s' % (str(arg_key), str(args[arg_key])))
-            if '<' in args:
-                input_file.write(' < %s' % str(args['<']))
-            input_file.write(' >> $(dirname $0)/%s.out' % number)
-            input_file.write(' 2> $(dirname $0)/%s.log' % number)
+
+            for arg_key in args:
+                if '<' in arg_key or '>' in arg_key:  # stream redirection
+                    input_file.write(' %s %s' % (str(arg_key), str(args[arg_key])))
             input_file.write('\n')
             input_file.close()
 
