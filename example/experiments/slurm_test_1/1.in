@@ -1,2 +1,2 @@
-echo "{'': ['AB'], 'a': 0, 'b': 1, '|desc': '0 + 1', 'output': '$(dirname $0)/1.out'}" > $(dirname $0)/1.out
-python example_tool.py "AB" --a="0" --b="1" --output="$(dirname $0)/1.out" &> $(dirname $0)/1.log
+echo "{'': ['AB'], 'a': 0, 'b': 1, '|desc': '0 + 1'}" > $(dirname $0)/1.out
+python example_tool.py "AB" --a="0" --b="1" >> "$(dirname $0)/1.out" 2> "$(dirname $0)/1.log"

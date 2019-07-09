@@ -1,3 +1,3 @@
-{'': ['CC'], 'a': 2, 'b': 2, '|desc': '2 + 2', 'output': './8.out'}
+{'': ['CC'], 'a': 2, 'b': 2, '|desc': '2 + 2'}
 Sum: 4
 Repeated Text: CCCCCC

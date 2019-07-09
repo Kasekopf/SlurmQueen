@@ -1,3 +1,3 @@
-{'': ['BC'], 'a': 1, 'b': 2, '|desc': '1 + 2', 'output': './5.out'}
+{'': ['BC'], 'a': 1, 'b': 2, '|desc': '1 + 2'}
 Sum: 3
 Repeated Text: BCBCBC
