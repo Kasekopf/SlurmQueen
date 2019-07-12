@@ -2,6 +2,7 @@ import io
 import os
 import re
 import zipfile
+import pathlib
 
 from slurmqueen.slurm_script import base_script
 from slurmqueen.experiment import Experiment, ExperimentInstance
@@ -59,7 +60,7 @@ class SlurmExperiment(Experiment):
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param args: a list of dictionaries; each dictionary defines a new task
-        :param dependencies: a list of files required to run the tool, relative to experiment folder (e.g. 'cnfxor.py')
+        :param dependencies: a list of files/globs required to run the tool, relative to experiment folder (e.g. 'cnfxor.py')
         :param setup_commands: The setup to perform on each worker node before beginning tasks
         :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
         :param log_argument: the argument used to pass the name of the .log file (defaults to stderr)
@@ -400,18 +401,28 @@ class SlurmInstance(ExperimentInstance):
         :return: None
         """
         with self._config.server.ftp_connect() as ftp:
-            for filename in files:
-                # If the dependency belongs in a separate folder, make it
-                if "/" in filename:
-                    self._config.server.execute(
-                        "mkdir -p "
-                        + self.remote_experiment_path(filename[: filename.rfind("/")])
-                    )
 
-                ftp.put(
-                    self.local_project_path(filename),
-                    self.remote_experiment_path(filename),
-                )
+            project_path = pathlib.Path(self.local_project_path())
+            for pattern in files:
+                for path in project_path.glob(pattern):
+                    if not path.is_file():
+                        continue
+
+                    if not path.parent == project_path:
+                        # If the dependency belongs in a separate folder, make it
+                        self._config.server.execute(
+                            "mkdir -p "
+                            + self.remote_experiment_path(
+                                path.parent.relative_to(project_path).as_posix()
+                            )
+                        )
+
+                    ftp.put(
+                        str(path),
+                        self.remote_experiment_path(
+                            path.relative_to(project_path).as_posix()
+                        ),
+                    )
 
     def _setup_all(self, num_workers, time, cpus_per_worker=1):
         """

@@ -18,6 +18,7 @@ pip install slurmqueen
 ## Dependencies:
 * paramiko
 * pandas
+* pathlib (included in Python 3.4 or higher)
 * ipywidgets (optional)
 * click (required on the Slurm cluster to run the example)
 * notebook (required to run the example notebook)
