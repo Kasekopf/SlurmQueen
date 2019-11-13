@@ -193,7 +193,7 @@ class ExperimentInstance:
                         if ":" not in line:
                             continue
 
-                        key_value_pair = line.split(":")
+                        key_value_pair = line.split(":", 1)
                         if key_value_pair[1] is "inf" or key_value_pair[1] is "nan":
                             key_value_pair[1] = "-1"
 
