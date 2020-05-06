@@ -14,7 +14,7 @@ class Experiment:
         The elements of each args dictionary will be passed to the command in each task as --key="value" pairs.
         Keys that contain | will not be passed.
         The key '', if it exists, should point to a list of positional arguments.
- 
+
         :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param args: a list of dictionaries; each dictionary defines a new task.
         :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
@@ -198,9 +198,10 @@ class ExperimentInstance:
                             key_value_pair[1] = "-1"
 
                         try:
-                            datum[key_value_pair[0].strip()] = ast.literal_eval(
-                                key_value_pair[1].strip()
-                            )
+                            val = ast.literal_eval(key_value_pair[1].strip())
+                            if isinstance(val, int) and val >= 2 ** 63:
+                                val = float(val)
+                            datum[key_value_pair[0].strip()] = val
                         except (ValueError, SyntaxError):  # Treat as string value
                             datum[key_value_pair[0].strip()] = key_value_pair[1].strip()
 
