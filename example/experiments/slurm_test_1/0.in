@@ -1,2 +1,2 @@
 echo "{'': ['AA'], 'a': 0, 'b': 0, '|desc': '0 + 0'}" > $(dirname $0)/0.out
-python example_tool.py "AA" --a="0" --b="0" >> "$(dirname $0)/0.out" 2> "$(dirname $0)/0.log"
+python3 example_tool.py "AA" --a="0" --b="0" >> "$(dirname $0)/0.out" 2> "$(dirname $0)/0.log"
