@@ -20,7 +20,6 @@ pip install slurmqueen
 * pandas
 * pathlib (included in Python 3.4 or higher)
 * ipywidgets (optional)
-* click (required on the Slurm cluster to run the example)
 * notebook (required to run the example notebook)
 
 See [requirements.txt](requirements.txt) for detailed version information, if needed.
