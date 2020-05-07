@@ -139,17 +139,10 @@ class BatchJob:
 
         highest_val = 0
         for j in jobs:
-            if "_" in j.jobid:
+            if "_" in j.jobid and not j.jobid.endswith(".extern"):
                 if "-" in j.jobid:
                     # JobID has the form 000000_[0-##]
                     top = j.jobid.split("-")[1][:-1]
-
-                    """
-                    # I think this was actually because jobid did not have enough chars...
-                    if top == '':
-                        # Job was cancelled; JobID has the form 00000_[##-+
-                        top = j.jobid.split('[')[1].split('-')[0]
-                    """
                     top = int(top)
                 elif "[" in j.jobid:
                     # JobID has the form 000000_[###]

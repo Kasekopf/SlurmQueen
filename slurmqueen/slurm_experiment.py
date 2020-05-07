@@ -522,7 +522,7 @@ class SlurmInstance(ExperimentInstance):
         self._exp.prepare_server(self)
 
         # Generate a command to complete submission
-        return 'sbatch --output="{0}" --workdir="{1}" --array=0-{2} {3} {4}'.format(
+        return 'sbatch --output="{0}" -D "{1}" --array=0-{2} {3} {4}'.format(
             self.remote_experiment_path("slurm_%a.worker"),
             self.remote_experiment_path(""),
             str(num_workers - 1),
