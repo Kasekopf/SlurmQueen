@@ -1,2 +1,2 @@
 echo "{'': ['CC'], 'a': 2, 'b': 2, '|desc': '2 + 2'}" > $(dirname $0)/8.out
-python example_tool.py "CC" --a="2" --b="2" >> "$(dirname $0)/8.out" 2> "$(dirname $0)/8.log"
+python3 example_tool.py "CC" --a="2" --b="2" >> "$(dirname $0)/8.out" 2> "$(dirname $0)/8.log"
