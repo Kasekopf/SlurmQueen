@@ -47,9 +47,8 @@ class SlurmExperiment(Experiment):
     def __init__(
         self,
         exp_id,
-        command,
-        args,
-        dependencies,
+        *commands,
+        dependencies=None,
         setup_commands=None,
         output_argument=">>",
         log_argument="2>",
@@ -58,16 +57,19 @@ class SlurmExperiment(Experiment):
         Initialize an experiment.
 
         :param exp_id: string name of the experiment instance (e.g. 'alpha1')
-        :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
-        :param args: a list of dictionaries; each dictionary defines a new task
+        :param commands: the Commands to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
         :param dependencies: a list of files/globs required to run the tool, relative to experiment folder (e.g. 'cnfxor.py')
         :param setup_commands: The setup to perform on each worker node before beginning tasks
         :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
         :param log_argument: the argument used to pass the name of the .log file (defaults to stderr)
         """
-        super().__init__(command, args, output_argument, log_argument)
+        super().__init__(
+            *commands, output_argument=output_argument, log_argument=log_argument
+        )
 
         self.id = exp_id
+        if dependencies is None:
+            dependencies = []
         self.dependencies = dependencies
         self.setup_commands = setup_commands
 
@@ -91,19 +93,20 @@ class SlurmExperiment(Experiment):
         :param max_size: The maximum number of tasks to include on each experiment.
         :return: A list of experiments, containing in total the same tasks of this experiment.
         """
-        num_partitions = int((max_size - 1 + len(self.args)) / max_size)
-        size = int((num_partitions - 1 + len(self.args)) / num_partitions)
+        num_partitions = int((max_size - 1 + len(self.commands)) / max_size)
+        size = int((num_partitions - 1 + len(self.commands)) / num_partitions)
 
         res = []
         for i in range(num_partitions):
-            args_subset = self.args[(i * size) : (i * size + size)]
+            args_subset = self.commands[(i * size) : (i * size + size)]
             res.append(
                 SlurmExperiment(
                     self.id + "/" + str(i),
-                    self.command,
-                    self.dependencies,
                     args_subset,
+                    dependencies=self.dependencies,
                     setup_commands=self.setup_commands,
+                    output_argument=self.output_argument,
+                    log_argument=self.log_argument,
                 )
             )
         return res

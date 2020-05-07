@@ -1,5 +1,6 @@
 import ast
 import io
+import itertools
 import os
 import pandas as pd
 import pandas.io.sql
@@ -7,21 +8,40 @@ import sqlite3
 
 
 class Experiment:
-    def __init__(self, command, args, output_argument=">>", log_argument="2>"):
+    def __init__(self, *command_configs, output_argument=">>", log_argument="2>"):
         """
-        Initialize an experiment, defined by running the command with parameters given by each dictionary in args.
+        Initialize an experiment, defined by running all Commands in command_configs.
 
-        The elements of each args dictionary will be passed to the command in each task as --key="value" pairs.
-        Keys that contain | will not be passed.
-        The key '', if it exists, should point to a list of positional arguments.
+        If multiple positional arguments are included, the resulting experiment is the
+        cartesian product of the lists of commands provided for each argument.
 
-        :param command: the command to run in each task, relative to experiment folder (e.g. 'python cnfxor.py')
+        The commands should be stated relative to experiment folder (e.g. 'python cnfxor.py')
+
+        :param command_configs: each positional argument is a list of commands to run.
         :param args: a list of dictionaries; each dictionary defines a new task.
-        :param output_argument: the argument used to pass the name of the .out file (defaults to stdout)
-        :param log_argument: the argument used to pass the name of the .log file (defaults to stderr)
+        :param output_argument: the argument name used to pass the name of the .out file (defaults to stdout)
+        :param log_argument: the argument name used to pass the name of the .log file (defaults to stderr)
         """
-        self.command = command
-        self.args = args
+
+        def fix_legacy(configs):
+            # Legacy: strings represent a single command to run
+            if isinstance(configs, str):
+                return [Command(configs)]
+
+            return [
+                # Legacy: a dict can also represent a command
+                Command(**c) if isinstance(c, dict) else c
+                for c in configs
+            ]
+
+        command_configs = [fix_legacy(configs) for configs in command_configs]
+        if len(command_configs) == 1:
+            self.commands = command_configs[0]
+        else:
+            self.commands = [
+                Command(*combo) for combo in itertools.product(*command_configs)
+            ]
+
         self.output_argument = output_argument
         self.log_argument = log_argument
 
@@ -74,11 +94,9 @@ class ExperimentInstance:
             os.makedirs(self._local_directory)
 
         # Craft input files for each worker
-        for count, args in enumerate(self._exp.args):
-            args = dict(args)
-
+        for count, command in enumerate(self._exp.commands):
             number = str(count).zfill(
-                len(str(len(self._exp.args)))
+                len(str(len(self._exp.commands)))
             )  # Prepend with padded zeros
 
             input_file = io.open(
@@ -88,31 +106,20 @@ class ExperimentInstance:
             # Write the arguments as the first line of the output file
             input_file.write(
                 'echo "%s" > $(dirname $0)/%s.out'
-                % (repr(args).replace('"', '\\"'), number)
+                % (repr(command.get_table()).replace('"', '\\"'), number)
             )
             input_file.write("\n")
 
-            input_file.write(self._exp.command)
+            # Setup the redirection for output and log files.
+            output_args = Arg.parse_all_from(
+                self._exp.output_argument, "$(dirname $0)/%s.out" % number
+            )
+            log_args = Arg.parse_all_from(
+                self._exp.log_argument, "$(dirname $0)/%s.log" % number
+            )
+            full_command = Command(command, *output_args, *log_args)
+            input_file.write(" ".join(full_command.get_args()))
 
-            args[self._exp.output_argument] = "$(dirname $0)/%s.out" % number
-            args[self._exp.log_argument] = "$(dirname $0)/%s.log" % number
-
-            if "" in args:
-                for positional_arg in args[""]:
-                    input_file.write(' "' + str(positional_arg) + '"')
-            for arg_key in args:
-                if arg_key == "":  # named argument
-                    continue
-                if "<" in arg_key or ">" in arg_key:  # stream redirection
-                    continue
-                if "|" in arg_key:  # private argument
-                    continue
-
-                input_file.write(' --%s="%s"' % (str(arg_key), str(args[arg_key])))
-
-            for arg_key in args:
-                if "<" in arg_key or ">" in arg_key:  # stream redirection
-                    input_file.write(' %s "%s"' % (str(arg_key), str(args[arg_key])))
             input_file.write("\n")
             input_file.close()
 
@@ -247,3 +254,140 @@ class SQLiteConnection:
     def __exit__(self, exit_type, value, traceback):
         self.conn.commit()
         self.conn.close()
+
+
+class Arg:
+    """
+    A class representing an argument to a command.
+    """
+
+    def __init__(self, key, value, prefix="--", connector="=", quote_value=True):
+        """
+        By default, the argument will be included in the command as:
+            --key="value"
+        
+        :param key: Name of the argument
+        :param value: Value of the argument
+        :param prefix: Prepended to argument name (default "--").
+        :param connector: Connector between key and value (default "=")
+        :param quote_value: True if the value should be contained within quotes (default True)
+        """
+        self._key = key
+        self._value = value
+        self._prefix = prefix
+        self._connector = connector
+        self._quote_value = quote_value
+
+    def get_args(self):
+        """
+        :return: The args in a form suitable for including in a command (i.e. ['--key="value"']).
+        """
+        value = str(self._value)
+        if self._quote_value:
+            value = '"' + value + '"'
+
+        if self._connector is None:
+            return []
+        elif self._key is None:
+            return [self._prefix + value]
+        else:
+            return [self._prefix + str(self._key) + self._connector + value]
+
+    def get_table(self):
+        """
+        :return: The args in a form suitable for a log (i.e. [{key: value}]]).
+        """
+        if self._key is None:
+            return {}
+        else:
+            return {self._key: self._value}
+
+    @staticmethod
+    def private(key, value):
+        """
+        :return: An argument that will not be included in the command, only the log.
+        """
+        return Arg(key, value, connector=None)
+
+    @staticmethod
+    def positional(value, prefix="", quote_value=True):
+        """
+        :return: An argument that is positional (i.e. no key).
+        """
+        return Arg(None, value, prefix=prefix, quote_value=quote_value)
+
+    @staticmethod
+    def redirection(key, value):
+        """
+        :return: An argument suitable for stream redirection.
+        """
+        return Arg(key, value, prefix="", connector=" ", quote_value=True)
+
+    @staticmethod
+    def parse_all_from(key, value):
+        """
+        Iterate over all arguments generated from the legacy key/value pair.
+
+        Keys that contain | only appear in the log.
+        The key '' indicates a list of positional arguments.
+        Keys that contain > or < indicate stream redirections.
+        """
+        if "|" in key:
+            yield Arg.private(key, value)
+        elif ">" in key or "<" in key:
+            yield Arg.redirection(key, value)
+        elif key is "":
+            yield Arg.private("", value)
+            for val in value:
+                yield Arg.positional(val)
+        else:
+            yield Arg(key, value)
+
+
+class Command:
+    """
+    A class representing a command with arguments.
+    """
+
+    def __init__(self, *args, **kwargs):
+        """
+        Create a command from a list of arguments.
+
+        All elements of kwargs are processed according to Arg.parse_all_from
+        """
+        self._args = []
+        for arg in args:
+            if isinstance(arg, str):
+                self._args.append(Arg.positional(arg, quote_value=False))
+            else:
+                self._args.append(arg)
+
+        for key in kwargs:
+            self._args.extend(Arg.parse_all_from(key, kwargs[key]))
+
+    def get_args(self):
+        """
+        :return: The command in a form suitable for running (i.e. ['python cnfxor.py --key="value"']).
+        """
+        result = []
+        for arg in self._args:
+            result += arg.get_args()
+        return result
+
+    def get_table(self):
+        """
+        :return: The command in a form suitable for logging (i.e. {key: value}).
+        """
+        result = {}
+        for arg in self._args:
+            result.update(arg.get_table())
+        return result
+
+    def __str__(self):
+        return " ".join(self.get_args())
+
+    def __or__(self, other):
+        """
+        Syntactic sugar for pipe
+        """
+        return Command(self, "|", other)
