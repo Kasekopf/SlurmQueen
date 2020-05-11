@@ -225,10 +225,10 @@ class SlurmInstance(ExperimentInstance):
             return False
         output_files = self.output_filenames()
         if len(output_files) > 0:
-            if len(output_files) < len(self._exp.args) and verbose:
+            if len(output_files) < len(self._exp.commands) and verbose:
                 print(
                     "Finished. Only %d/%d output files."
-                    % (len(output_files), len(self._exp.args))
+                    % (len(output_files), len(self._exp.commands))
                 )
             return True
         return False
@@ -268,7 +268,7 @@ class SlurmInstance(ExperimentInstance):
                 return
 
             output_files = self.output_filenames()
-            if len(output_files) == len(self._exp.args):
+            if len(output_files) == len(self._exp.commands):
                 status_label.value = "Finished."
                 run_button.disabled = True
                 complete_button.disabled = True
@@ -276,7 +276,7 @@ class SlurmInstance(ExperimentInstance):
             elif len(output_files) > 0:
                 status_label.value = "Finished. Only %d/%d output files" % (
                     len(output_files),
-                    len(self._exp.args),
+                    len(self._exp.commands),
                 )
                 run_button.disabled = True
                 complete_button.disabled = True

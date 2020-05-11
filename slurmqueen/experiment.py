@@ -136,7 +136,7 @@ class ExperimentInstance:
         return result
 
     def __len__(self):
-        return len(self._exp.args)
+        return len(self._exp.commands)
 
     def query(self, query):
         """
