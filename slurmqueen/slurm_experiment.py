@@ -490,6 +490,11 @@ class SlurmInstance(ExperimentInstance):
         with io.open(self.local_experiment_path(job_file), "w", newline="\n") as f:
             f.write(script_builder.build())
 
+        task_file = "_tasks.txt"
+        with io.open(self.local_experiment_path(task_file), "w", newline="\n") as f:
+            for input_file in input_files:
+                f.write(input_file + "\n")
+
         # Compress input files locally
         input_zip = "_inputs.zip"
         with zipfile.ZipFile(self.local_experiment_path(input_zip), "w") as zipf:
@@ -506,6 +511,10 @@ class SlurmInstance(ExperimentInstance):
             ftp.put(
                 self.local_experiment_path(job_file),
                 self.remote_experiment_path(job_file),
+            )
+            ftp.put(
+                self.local_experiment_path(task_file),
+                self.remote_experiment_path(task_file),
             )
         self.copy_project_files_to_remote(self._exp.dependencies)
         print("Copied files to remote server")

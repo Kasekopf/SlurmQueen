@@ -6,6 +6,6 @@
 #SBATCH --cpus-per-task=1
 module load Anaconda3/5.0.0
 
-for file in `find *.in | awk "(NR - 1) % $1 == $SLURM_ARRAY_TASK_ID"`; do
+for file in `cat _tasks.txt | awk "(NR - 1) % ${1:-1} == ${SLURM_ARRAY_TASK_ID:-0}"`; do
   ./$file
 done
