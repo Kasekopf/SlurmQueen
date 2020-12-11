@@ -207,7 +207,9 @@ class ExperimentInstance:
                         try:
                             val = ast.literal_eval(key_value_pair[1].strip())
                             if isinstance(val, int) and val >= 2 ** 63:
-                                val = float(val)
+                                val = str(
+                                    val
+                                )  # int(val) would fail for a large unweighted model count
                             datum[key_value_pair[0].strip()] = val
                         except (ValueError, SyntaxError):  # Treat as string value
                             datum[key_value_pair[0].strip()] = key_value_pair[1].strip()
@@ -265,7 +267,7 @@ class Arg:
         """
         By default, the argument will be included in the command as:
             --key="value"
-        
+
         :param key: Name of the argument
         :param value: Value of the argument
         :param prefix: Prepended to argument name (default "--").
