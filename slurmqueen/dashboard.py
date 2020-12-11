@@ -45,7 +45,7 @@ class SlurmServer(SSHServer):
 
         return BatchJob.collect(self, res)
 
-    def all_jobs(self, job_id=None, other_username=None):
+    def all_jobs(self, job_id=None, other_username=None, command=None):
         """
         Load information on all jobs using sacct. Batch jobs of the same batch are grouped together.
 
@@ -54,9 +54,11 @@ class SlurmServer(SSHServer):
 
         :param job_id: If provided, load all jobs whose job id matches this.
         :param other_username: If provided, load all jobs belonging to this user.
+        :param command: If provided, execute it instead of a default sacct command.
         :return: A list of jobs, grouped by batch.
         """
-        command = 'sacct --format="jobid%20,jobname%50,partition,user,state,totalcpu,time,node"'
+        if not command:
+            command = 'sacct --format="jobid%20,jobname%50,partition,user,state,totalcpu,time,node,maxrss" --parsable2' # parsable2 shows '|'-delimited values, including max resident set size (maxrss)
         if job_id:
             command += " -j " + str(job_id)
         elif other_username:
@@ -64,13 +66,33 @@ class SlurmServer(SSHServer):
         else:
             command += " -u " + self.username
 
-        raw_jobs = self.execute(command).split("\n")
+        raw_jobs = self.execute(f"{command} --units=K").split("\n") # maxrss in kilobytes
         raw_jobs = list(filter(lambda j: j != "", raw_jobs))
 
         if len(raw_jobs) < 2:
             return []
 
-        res = [JobData(raw_jobs[0], i) for i in raw_jobs[2:]]
+        res = [JobData(raw_jobs[0], i, parsable2=True) for i in raw_jobs[1:]] # sacct --parsable2: header row is immediately followed by data rows
+
+        def accumulateMaxResidentSetSizes(): # modifies `res` (list of JobData objects)
+            """
+            Add to the maxrss field of each primary JobData object (e.g. "1234567_0") the maxrss fields of relevant secondary JobData objects (e.g. "1234567_0.batch" and "1234567_0.extern") in `res`.
+
+            This accumulation is necessary because "*.batch" or "*.extern" may be filtered out of `res` later.
+            """
+            i = 0 # index of a primary JobData object in `res`
+            while i < len(res):
+                if "." in res[i].jobid:
+                    print(f'[WARNING] "." in primary JobData.jobid "{res[i].jobid}"', file=sys.stderr)
+                    return
+                else:
+                    j = i + 1 # index of a relevant secondary JobData object in `res`
+                    while j < len(res) and res[j].jobid.startswith(res[i].jobid):
+                        res[i].maxrss += res[j].maxrss
+                        j += 1
+                    i = j # the next primary JobData object follows the last relevant secondary JobData object of the current primary JobData ojbect
+        accumulateMaxResidentSetSizes()
+
         res = filter(lambda j: j.name != "batch", res)
         return BatchJob.collect(self, res)
 
@@ -90,10 +112,13 @@ class SlurmServer(SSHServer):
 
 
 class JobData:
-    def __init__(self, header, info):
-        words = filter(lambda w: len(w) > 0, info.split(" "))
-
-        header_words = filter(lambda w: len(w) > 0, header.upper().split(" "))
+    def __init__(self, header, info, parsable2=False):
+        if parsable2: # "sacct --parsable2" in method SlurmServer.all_jobs
+            words = info.split("|") # there may be an empty value between 2 delimiters, i.e. "||"
+            header_words = header.upper().split("|") # every header word is nonempty
+        else: # "squeue" in method SlurmServer.current_jobs
+            words = filter(lambda w: len(w) > 0, info.split(" "))
+            header_words = filter(lambda w: len(w) > 0, header.upper().split(" "))
 
         self.properties = {}
         for column, value in zip(header_words, words):
@@ -115,6 +140,12 @@ class JobData:
                 self.nodes = value
             if column == "NODELIST(REASON)" or column == "NODELIST":
                 self.nodelist = value
+            if column == "MAXRSS": # max resident set size (RAM usage)
+                self.maxrss = 0
+                if value.endswith("K"):
+                    self.maxrss = int(value[:-1])
+                elif value not in {"", "0"}:
+                    print(f'[WARNING] "sacct --units=K" should have showed kilobytes but actually showed {value}', file=sys.stderr)
 
             self.properties[column] = value
 
@@ -226,7 +257,7 @@ class BatchJob:
     def collect(server, jobs):
         jobs_by_id = {}
         for j in jobs:
-            if ".ba+" in j.jobid:
+            if ".b" in j.jobid or ".e" in j.jobid: # from ".b+" to ".batch" or from ".e" to ".extern", depending on the width of the JobID column
                 continue
 
             job_id = j.jobid.split("_")[0]
