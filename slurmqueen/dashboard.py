@@ -272,7 +272,7 @@ class BatchJob:
         for j in jobs:
             if (
                 ".b" in j.jobid or ".e" in j.jobid
-            ):  # from ".b+" to ".batch" or from ".e" to ".extern", depending on the width of the JobID column
+            ):  # from ".b+" to ".batch" or from ".e+" to ".extern", depending on the width of the JobID column
                 continue
 
             job_id = j.jobid.split("_")[0]
