@@ -471,6 +471,7 @@ class SlurmInstance(ExperimentInstance):
             for f in os.listdir(self.local_experiment_path())
             if re.match(r"\d+.in", f)
         ]
+        input_files = sorted(input_files)  # sorts lines in file _tasks.txt
         print("Created " + str(len(input_files)) + " local files")
 
         # Create the remote directory structure
