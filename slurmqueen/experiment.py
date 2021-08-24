@@ -201,7 +201,7 @@ class ExperimentInstance:
                             continue
 
                         key_value_pair = line.split(":", 1)
-                        if key_value_pair[1] is "inf" or key_value_pair[1] is "nan":
+                        if key_value_pair[1] == "inf" or key_value_pair[1] == "nan":
                             key_value_pair[1] = "-1"
 
                         try:
