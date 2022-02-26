@@ -338,7 +338,7 @@ class Arg:
             yield Arg.private(key, value)
         elif ">" in key or "<" in key:
             yield Arg.redirection(key, value)
-        elif key is "":
+        elif key == "":
             yield Arg.private("", value)
             for val in value:
                 yield Arg.positional(val)
