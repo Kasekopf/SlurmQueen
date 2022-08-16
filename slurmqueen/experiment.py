@@ -201,12 +201,12 @@ class ExperimentInstance:
                             continue
 
                         key_value_pair = line.split(":", 1)
-                        if key_value_pair[1] is "inf" or key_value_pair[1] is "nan":
+                        if key_value_pair[1] == "inf" or key_value_pair[1] == "nan":
                             key_value_pair[1] = "-1"
 
                         try:
                             val = ast.literal_eval(key_value_pair[1].strip())
-                            if isinstance(val, int) and val >= 2 ** 63:
+                            if isinstance(val, int) and val >= 2**63:
                                 val = str(
                                     val
                                 )  # int(val) would fail for a large unweighted model count
@@ -338,7 +338,7 @@ class Arg:
             yield Arg.private(key, value)
         elif ">" in key or "<" in key:
             yield Arg.redirection(key, value)
-        elif key is "":
+        elif key == "":
             yield Arg.private("", value)
             for val in value:
                 yield Arg.positional(val)
