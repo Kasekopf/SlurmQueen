@@ -206,7 +206,7 @@ class ExperimentInstance:
 
                         try:
                             val = ast.literal_eval(key_value_pair[1].strip())
-                            if isinstance(val, int) and val >= 2 ** 63:
+                            if isinstance(val, int) and val >= 2**63:
                                 val = str(
                                     val
                                 )  # int(val) would fail for a large unweighted model count
